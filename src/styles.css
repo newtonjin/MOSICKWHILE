@@ -47,6 +47,74 @@ body::before {
   z-index: 0;
 }
 
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background:
+    radial-gradient(90% 70% at 20% 0%, rgba(79, 214, 154, 0.16), transparent 55%),
+    rgba(6, 10, 8, 0.92);
+  backdrop-filter: blur(12px);
+}
+
+.gate[hidden] {
+  display: none !important;
+}
+
+.gate-card {
+  width: min(100%, 340px);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 18px 16px 16px;
+  box-shadow: var(--shadow);
+}
+
+.gate-kicker {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.gate-card h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.gate-lead {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.gate-steps {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+  display: grid;
+  gap: 8px;
+}
+
+.gate-steps b {
+  color: var(--accent);
+}
+
+.tip-checks {
+  margin-top: 10px;
+}
+
 .shell {
   position: relative;
   z-index: 1;

@@ -1,6 +1,8 @@
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-use crate::sensing::display_geom::{monitor_under_cursor, DisplayRect};
+use crate::sensing::display_geom::{
+    monitor_of_foreground, monitor_under_cursor, DisplayRect,
+};
 
 #[cfg(windows)]
 use windows::Win32::Foundation::HWND;
@@ -92,12 +94,17 @@ pub fn destroy_overlay(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Follow the monitor under the mouse (dual-screen: FOV lives where you work).
+/// Place FOV on the right monitor: prefer focused game, else cursor (multi-screen).
 pub fn fit_overlay_to_active_monitor(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
 ) -> tauri::Result<()> {
-    let rect = monitor_under_cursor().or_else(|| {
+    let pin_game = app
+        .try_state::<std::sync::Arc<crate::state::AppState>>()
+        .map(|s| s.config.lock().pin_to_game_monitor)
+        .unwrap_or(true);
+
+    let fallback = || {
         window
             .current_monitor()
             .ok()
@@ -113,7 +120,17 @@ pub fn fit_overlay_to_active_monitor(
                     h: s.height,
                 }
             })
-    });
+    };
+
+    let rect = if pin_game {
+        monitor_of_foreground()
+            .or_else(monitor_under_cursor)
+            .or_else(fallback)
+    } else {
+        monitor_under_cursor()
+            .or_else(monitor_of_foreground)
+            .or_else(fallback)
+    };
 
     let Some(rect) = rect else {
         return Ok(());

@@ -62,6 +62,8 @@ pub struct MitigationEngine {
     center_pin: f32,
     prev_gaze_x: f32,
     prev_gaze_y: f32,
+    /// Seconds since engine started protecting (long-session comfort).
+    session_secs: f32,
 }
 
 impl Default for MitigationEngine {
@@ -87,6 +89,7 @@ impl Default for MitigationEngine {
             center_pin: 0.0,
             prev_gaze_x: 0.5,
             prev_gaze_y: 0.5,
+            session_secs: 0.0,
         }
     }
 }
@@ -145,7 +148,18 @@ impl MitigationEngine {
             target = (target * 1.35 + reading.pred.boost * 0.25).clamp(0.0, 1.0);
         }
 
-        // Gaming: FOV restriction rises fast and holds harder.
+        self.session_secs += dt;
+
+        // Long sessions: FOV should not "breathe" off — hold rises with play time.
+        // Caps at ~45 min so protection stays strong for multi-hour sessions.
+        let fatigue = if cfg.long_session_comfort {
+            (self.session_secs / 2700.0).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let hold_boost = 1.0 + fatigue * 0.65 + if gaming_on { 0.25 } else { 0.0 };
+
+        // Gaming / comfort: FOV rises fast and holds harder the longer you play.
         let pred_lead = cfg.predictive_fov && reading.pred.boost > reading.raw_drive + 0.08;
         let tau = if target > self.smoothed_motion {
             if gaming_on {
@@ -155,22 +169,22 @@ impl MitigationEngine {
             } else {
                 cfg.attack_secs.max(0.12)
             }
-        } else if gaming_on {
-            (cfg.release_secs * 1.15).max(0.45) // hold restriction longer in fights
         } else {
-            cfg.release_secs.max(0.35)
+            (cfg.release_secs * hold_boost).max(0.35)
         };
         let alpha = 1.0 - (-dt / tau).exp();
         self.smoothed_motion += (target - self.smoothed_motion) * alpha;
 
         if cfg.comfort_auto_ramp {
-            if self.smoothed_motion > 0.55 {
+            if self.smoothed_motion > 0.48 {
                 self.high_motion_secs += dt;
             } else {
-                self.high_motion_secs = (self.high_motion_secs - dt * 0.5).max(0.0);
+                // Slow forget — residual sensitivity after hard fights.
+                self.high_motion_secs = (self.high_motion_secs - dt * 0.28).max(0.0);
             }
-            let ramp = (self.high_motion_secs / 12.0).clamp(0.0, 1.0) * 0.18;
-            self.comfort_boost += (ramp - self.comfort_boost) * (1.0 - (-dt / 1.2).exp());
+            let ramp_cap = 0.18 + fatigue * 0.14;
+            let ramp = (self.high_motion_secs / 9.0).clamp(0.0, 1.0) * ramp_cap;
+            self.comfort_boost += (ramp - self.comfort_boost) * (1.0 - (-dt / 1.4).exp());
         } else {
             self.comfort_boost *= 0.95;
         }
@@ -324,14 +338,14 @@ impl MitigationEngine {
             let dx = target_cx - self.clear_x;
             let dy = target_cy - self.clear_y;
             let dist = (dx * dx + dy * dy).sqrt();
-            // ~1.6% of screen — kills pupil/compression micro-wobble.
-            const DEAD: f32 = 0.016;
-            if dist < DEAD {
+            // Wider deadzone as the session grows — less FOV "breathing".
+            let dead = 0.016 + fatigue * 0.012 + if gaming_on { 0.006 } else { 0.0 };
+            if dist < dead {
                 target_cx = self.clear_x;
                 target_cy = self.clear_y;
             } else {
                 // Only the excess beyond the deadzone pulls the zone.
-                let scale = ((dist - DEAD) / dist).clamp(0.0, 1.0);
+                let scale = ((dist - dead) / dist).clamp(0.0, 1.0);
                 target_cx = self.clear_x + dx * scale;
                 target_cy = self.clear_y + dy * scale;
             }
@@ -390,8 +404,10 @@ impl MitigationEngine {
         } else {
             cfg.vignette_slew_up
         };
+        // Long play: slower fade-out so vignette doesn't pulse (secondary nausea).
+        let slew_down = cfg.vignette_slew_down * (1.0 / hold_boost.max(1.0));
         let max_up = slew_up * dt;
-        let max_down = cfg.vignette_slew_down * dt;
+        let max_down = slew_down * dt;
         let dv = vignette_target - self.vignette_out;
         self.vignette_out += dv.clamp(-max_down, max_up);
 

@@ -86,6 +86,60 @@ fn primary_size() -> (u32, u32) {
     }
 }
 
+/// Monitor of the foreground window (game pin — dual/multi-monitor).
+/// Skips MOSICKWHILE itself so alt-tabbing to the panel doesn't yank the FOV.
+pub fn monitor_of_foreground() -> Option<DisplayRect> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::{HWND, RECT};
+        use windows::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+        };
+
+        unsafe {
+            let hwnd: HWND = GetForegroundWindow();
+            if hwnd.0.is_null() || IsIconic(hwnd).as_bool() {
+                return None;
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid == 0 || pid == std::process::id() {
+                return None;
+            }
+
+            let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if mon.is_invalid() {
+                return None;
+            }
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                rcMonitor: RECT::default(),
+                rcWork: RECT::default(),
+                dwFlags: 0,
+            };
+            if !GetMonitorInfoW(mon, &mut info).as_bool() {
+                return None;
+            }
+            let r = info.rcMonitor;
+            let w = (r.right - r.left).max(640) as u32;
+            let h = (r.bottom - r.top).max(480) as u32;
+            Some(DisplayRect {
+                x: r.left,
+                y: r.top,
+                w,
+                h,
+            })
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
 /// Monitor under the cursor (dual/multi-monitor aware).
 pub fn monitor_under_cursor() -> Option<DisplayRect> {
     #[cfg(windows)]

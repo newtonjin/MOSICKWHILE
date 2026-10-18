@@ -40,6 +40,10 @@ export interface AppConfig {
   realPeripheralBlur: boolean;
   /** Manual gaming mode: faster FOV + clear zone centered on turns/glances. */
   gamingMode: boolean;
+  /** Pin overlay to focused game monitor (multi-screen comfort). */
+  pinToGameMonitor: boolean;
+  /** Hold FOV longer as the play session grows. */
+  longSessionComfort: boolean;
 }
 
 export interface LiveMetrics {

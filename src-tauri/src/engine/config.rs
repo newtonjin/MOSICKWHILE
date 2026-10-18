@@ -86,6 +86,17 @@ pub struct AppConfig {
     /// External overlay only — never uses process injection.
     #[serde(alias = "gamingModeAuto")]
     pub gaming_mode: bool,
+    /// Pin overlay to the monitor of the focused game (best for long comfort sessions).
+    /// When false, follows the cursor's monitor instead.
+    #[serde(default = "default_true")]
+    pub pin_to_game_monitor: bool,
+    /// Extra long-session hold: FOV releases slower the longer you play with motion.
+    #[serde(default = "default_true")]
+    pub long_session_comfort: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -127,6 +138,8 @@ impl AppConfig {
             side_restrictor: true,
             real_peripheral_blur: true,
             gaming_mode: false,
+            pin_to_game_monitor: true,
+            long_session_comfort: true,
         };
 
         match preset {

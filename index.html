@@ -7,6 +7,35 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
+    <div id="comfort-gate" class="gate" hidden>
+      <div class="gate-card">
+        <p class="gate-kicker">Propósito</p>
+        <h1>Mais horas sem enjoo</h1>
+        <p class="gate-lead">
+          O MOSICKWHILE corta o fluxo periférico que dispara cinetose — para você
+          jogar mais tempo com menos dor de cabeça.
+        </p>
+        <ol class="gate-steps">
+          <li>
+            No jogo, use <b>Borderless / Janela sem bordas</b> (overlay externo
+            fica acima).
+          </li>
+          <li>Ligue o overlay (<b>ON</b>) e deixe o painel na tray.</li>
+          <li>
+            Em FPS/ação, ative <b>Gaming</b> ao lado de Forte — FOV forte e estável
+            no centro.
+          </li>
+          <li>
+            Multi-monitor: o FOV segue o <b>monitor do jogo</b> em foco
+            automaticamente.
+          </li>
+        </ol>
+        <button id="gate-go" class="power wide" type="button">
+          Entendi — proteger conforto
+        </button>
+      </div>
+    </div>
+
     <div class="shell">
       <header class="top">
         <div class="brand-block">
@@ -63,14 +92,23 @@
 
         <section class="block tip">
           <div class="row-label">
-            <span>Como jogar</span>
-            <span class="hint" id="bridge-hint">overlay externo</span>
+            <span>Conforto longo</span>
+            <span class="hint" id="bridge-hint">sessão</span>
           </div>
           <p class="attach-help">
-            Sem injeção (evita crash). Deixe o overlay <b>ON</b> e no jogo use
-            <b>Borderless / Janela sem bordas</b> — o FOV fica acima no monitor.
-            Fullscreen exclusivo puro do DirectX não deixa overlay externo por cima.
+            Borderless no jogo · overlay ON · Gaming em ação. Sem inject.
+            FOV segura mais forte quanto mais tempo você joga com motion.
           </p>
+          <div class="checks tip-checks">
+            <label
+              ><input id="pin-game-monitor" type="checkbox" checked /> Fixar no
+              monitor do jogo</label
+            >
+            <label
+              ><input id="long-session" type="checkbox" checked /> Hold longo
+              (anti-enjoo)</label
+            >
+          </div>
         </section>
 
         <details class="panel" open>

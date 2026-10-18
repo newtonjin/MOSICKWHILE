@@ -68,6 +68,8 @@ function applyConfigToUi(cfg: AppConfig) {
   $input("side-restrictor").checked = cfg.sideRestrictor;
   $input("real-blur").checked = cfg.realPeripheralBlur;
   $input("auto-start").checked = cfg.autoStartOverlay;
+  $input("pin-game-monitor").checked = cfg.pinToGameMonitor ?? true;
+  $input("long-session").checked = cfg.longSessionComfort ?? true;
   $select("motion-source").value = cfg.motionSource;
   $("manual-block").hidden = cfg.motionSource !== "manual";
 
@@ -195,6 +197,8 @@ function wireUi() {
     ["side-restrictor", "sideRestrictor"],
     ["real-blur", "realPeripheralBlur"],
     ["auto-start", "autoStartOverlay"],
+    ["pin-game-monitor", "pinToGameMonitor"],
+    ["long-session", "longSessionComfort"],
   ];
 
   for (const [id, key] of boolMap) {
@@ -251,6 +255,19 @@ async function wireEvents() {
 
 }
 
+function wireComfortGate() {
+  const key = "mosickwhile.comfortGate.v1";
+  const gate = $("comfort-gate");
+  if (!localStorage.getItem(key)) {
+    gate.hidden = false;
+  }
+  $("gate-go").addEventListener("click", () => {
+    localStorage.setItem(key, "1");
+    gate.hidden = true;
+  });
+}
+
+wireComfortGate();
 wireUi();
 void loadConfig();
 void wireEvents();

@@ -1,47 +1,32 @@
 # MOSICKWHILE
 
-**Mo**tion **Sick**ness **Whi**le Gaming — overlay Windows que reduz cinetose em jogos (1ª/3ª pessoa).
+**Mo**tion **Sick**ness **Whi**le Gaming — overlay Windows feito para quem tem cinetose: **mais horas de jogo com menos enjoo e dor de cabeça**.
 
 ## Usar (plug and play)
 
-Não precisa instalar Node, Rust nem dependências.
-
-1. Abra **[Releases](https://github.com/newtonjin/MOSICKWHILE/releases/latest)**
-2. Baixe **`MOSICKWHILE-windows-x64.zip`** (portátil) **ou** o instalador `.exe`
-3. Extraia (se zip) e execute **`MOSICKWHILE.exe`**
+1. **[Releases](https://github.com/newtonjin/MOSICKWHILE/releases/latest)** → baixe o zip ou o setup  
+2. Execute **`MOSICKWHILE.exe`**  
+3. No jogo: **Borderless / Janela sem bordas**  
+4. Overlay **ON** · em FPS/ação ative **Gaming**  
 
 | Atalho | Ação |
 |--------|------|
 | `Ctrl+Shift+M` | Liga/desliga overlay |
 | `Ctrl+Shift+=` / `-` | Intensidade |
 
-### Como jogar (sem crash)
+## Conforto (o que importa)
 
-- Overlay **externo** no monitor, sempre acima (sem injetar DLL no jogo)
-- No jogo, use **Borderless / Janela sem bordas / Fullscreen windowed**
-- Fullscreen exclusivo puro do DirectX não deixa janelas externas por cima — por isso não usamos inject (podia crashar o jogo)
+- **FOV dinâmica** corta optical flow periférico (principal gatilho de VIMS)
+- **Pupilas** guiam a zona clara; no Gaming ela fica no centro em viradas
+- **Hold longo** — quanto mais tempo com motion, mais a proteção segura (menos “respiração” do vignette)
+- **Multi-monitor** — FOV fixa no **monitor do jogo** em foco (não some pro segundo monitor)
+- Overlay **externo** always-on-top (sem inject — evita crash)
 
-### Modo gaming
-
-Ative **manualmente** no painel. FOV mais rápido; viradas e olhadas de relance mantêm a zona clara no **centro**.
-
----
-
-## O que faz
-
-- FOV / vignette dinâmica (e preditiva)
-- Zona foveal guiada por **pupilas** (webcam)
-- Rest frame (horizonte terra, etc.)
-- Blur periférico, side restrictor, comfort ramp
-- Dual-monitor + tray
-
-## Desenvolvimento (só quem vai compilar)
+## Desenvolvimento
 
 ```bash
 npm install
 npm run tauri build
 ```
 
-## Licença / privacidade
-
-Código-fonte neste repositório. Sem telemetria remota, sem API keys, sem contas. O app roda local no seu PC.
+Sem telemetria remota. Roda só no seu PC.
