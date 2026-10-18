@@ -42,7 +42,7 @@ pub struct LiveMetrics {
     pub pupil_lock_rate: f32,
     /// Gaze jitter while relatively still (screen units, lower better).
     pub pupil_jitter: f32,
-    /// Gaming mode currently active (auto-detect or forced).
+    /// Gaming mode currently active (manual toggle).
     pub gaming_active: bool,
     /// 0–1 confidence of game session.
     pub gaming_score: f32,

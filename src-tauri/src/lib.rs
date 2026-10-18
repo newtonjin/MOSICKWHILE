@@ -18,7 +18,9 @@ use commands::{
     get_overlay_frame, is_overlay_active, set_config, start_overlay, stop_overlay, toggle_enabled,
 };
 use ipc::BridgeState;
-use overlay::{destroy_overlay, fit_overlay_to_active_monitor, hide_overlay, show_overlay};
+use overlay::{
+    destroy_overlay, fit_overlay_to_active_monitor, hide_overlay, reassert_topmost, show_overlay,
+};
 use state::AppState;
 
 fn try_register_shortcuts(app: &tauri::App) {
@@ -153,61 +155,29 @@ pub fn run() {
 
             std::thread::spawn(move || {
                 let mut geo_tick = 0u32;
-                let mut ui_tick = 0u32;
                 while state.is_running() {
                     geo_tick = geo_tick.wrapping_add(1);
-                    ui_tick = ui_tick.wrapping_add(1);
-                    // Dual-monitor: move FOV overlay onto the monitor under the cursor.
-                    if geo_tick % 20 == 0 {
-                        if let Some(win) = handle.get_webview_window(overlay::OVERLAY_LABEL) {
-                            if *state.overlay_visible.lock() {
+                    // External overlay: follow monitor + stay above games (no DLL inject).
+                    if let Some(win) = handle.get_webview_window(overlay::OVERLAY_LABEL) {
+                        if *state.overlay_visible.lock() {
+                            if geo_tick % 15 == 0 {
                                 let _ = fit_overlay_to_active_monitor(&handle, &win);
-                                let _ = win.set_always_on_top(true);
+                            }
+                            // Re-assert TOPMOST often so borderless games don't bury us.
+                            if geo_tick % 3 == 0 {
+                                reassert_topmost(&win);
                             }
                         }
                     }
 
                     let cfg = state.config.lock().clone();
-                    bridge.ipc.write_from_config(&cfg, cfg.enabled);
+                    // Inject/bridge Present path disabled — it crashed some titles.
+                    bridge.ipc.write_from_config(&cfg, false);
 
-                    let snap_pre = bridge.ipc.snapshot();
-                    let frame = state.tick(snap_pre.hooked != 0);
-                    bridge.ipc.write_frame_hints(&frame);
-                    let snap = bridge.ipc.snapshot();
-
-                    // When Present bridge is live, surface its telemetry (exclusive FS).
-                    let mut frame = frame;
-                    if snap.hooked != 0 {
-                        frame.metrics.motion = snap.motion;
-                        frame.metrics.comfort_index = snap.comfort;
-                        frame.metrics.fov_restriction = snap.fov_amount;
-                        frame.metrics.peripheral_flow = snap.peri_flow;
-                        frame.metrics.analyze_fps = snap.present_fps;
-                        frame.metrics.capture_ok = true;
-                        frame.metrics.capture_status = "bridge_present".into();
-                        frame.motion = snap.motion;
-                        frame.vignette_amount = snap.fov_amount;
-                    }
-
-                    // Overlay always needs frames (FOV). Panel telemetry throttled in tray.
+                    let frame = state.tick();
                     let _ = handle.emit("overlay-frame", &frame);
-                    let panel_on = state.panel_visible.load(Ordering::Relaxed);
-                    if panel_on || ui_tick % 4 == 0 {
-                        let _ = handle.emit(
-                            "bridge-status",
-                            commands::BridgeStatus {
-                                attached_pid: *bridge.attached_pid.lock(),
-                                hooked: snap.hooked != 0,
-                                motion: snap.motion,
-                                comfort: snap.comfort,
-                                fov_amount: snap.fov_amount,
-                                present_fps: snap.present_fps,
-                                peri_flow: snap.peri_flow,
-                            },
-                        );
-                    }
 
-                    // Slightly longer sleep when panel is hidden → less CPU churn.
+                    let panel_on = state.panel_visible.load(Ordering::Relaxed);
                     let sleep_ms = if panel_on { 22 } else { 26 };
                     std::thread::sleep(Duration::from_millis(sleep_ms));
                 }

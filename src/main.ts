@@ -68,13 +68,13 @@ function applyConfigToUi(cfg: AppConfig) {
   $input("side-restrictor").checked = cfg.sideRestrictor;
   $input("real-blur").checked = cfg.realPeripheralBlur;
   $input("auto-start").checked = cfg.autoStartOverlay;
-  $input("gaming-mode").checked = cfg.gamingModeAuto;
   $select("motion-source").value = cfg.motionSource;
   $("manual-block").hidden = cfg.motionSource !== "manual";
 
   document.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.preset === cfg.preset);
   });
+  $("btn-gaming").classList.toggle("active", cfg.gamingMode);
 
   $("btn-toggle-engine").textContent = cfg.enabled
     ? "Pausar motor"
@@ -139,23 +139,6 @@ function flushMetrics() {
   hint.classList.toggle("bad", !m.captureOk);
 }
 
-interface BridgeStatus {
-  attachedPid: number | null;
-  hooked: boolean;
-  motion: number;
-  comfort: number;
-  fovAmount: number;
-  presentFps: number;
-  periFlow: number;
-}
-
-function setBridgeHint(text: string, ok?: boolean) {
-  const hint = $("bridge-hint");
-  hint.textContent = text;
-  hint.classList.toggle("ok", ok === true);
-  hint.classList.toggle("bad", ok === false);
-}
-
 function wireUi() {
   $("btn-power").addEventListener("click", async () => {
     if (overlayOn) {
@@ -164,31 +147,6 @@ function wireUi() {
     } else {
       await invoke("start_overlay");
       setOverlayUi(true);
-    }
-  });
-
-  $("btn-attach").addEventListener("click", async () => {
-    const btn = $("btn-attach") as HTMLButtonElement;
-    btn.disabled = true;
-    for (let i = 3; i >= 1; i--) {
-      setBridgeHint(`foque o jogo… ${i}`);
-      btn.textContent = `Anexar (${i})`;
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-    try {
-      const st = await invoke<BridgeStatus>("attach_foreground_game");
-      setBridgeHint(
-        st.hooked
-          ? `PID ${st.attachedPid} · Present OK`
-          : `PID ${st.attachedPid} · aguardando Present`,
-        true,
-      );
-      setOverlayUi(false);
-    } catch (e) {
-      setBridgeHint(String(e), false);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Anexar ao jogo (3s)";
     }
   });
 
@@ -237,7 +195,6 @@ function wireUi() {
     ["side-restrictor", "sideRestrictor"],
     ["real-blur", "realPeripheralBlur"],
     ["auto-start", "autoStartOverlay"],
-    ["gaming-mode", "gamingModeAuto"],
   ];
 
   for (const [id, key] of boolMap) {
@@ -247,6 +204,11 @@ function wireUi() {
       } as Partial<AppConfig>);
     });
   }
+
+  $("btn-gaming").addEventListener("click", () => {
+    if (!config) return;
+    void pushConfig({ gamingMode: !config.gamingMode, preset: config.preset });
+  });
 
   $select("rest-style").addEventListener("change", (e) => {
     void pushConfig({
@@ -287,16 +249,6 @@ async function wireEvents() {
     setOverlayUi(event.payload);
   });
 
-  await listen<BridgeStatus>("bridge-status", (event) => {
-    const st = event.payload;
-    if (!st.attachedPid) return;
-    setBridgeHint(
-      st.hooked
-        ? `PID ${st.attachedPid} · ${st.presentFps.toFixed(0)} fps`
-        : `PID ${st.attachedPid} · injetado`,
-      st.hooked,
-    );
-  });
 }
 
 wireUi();

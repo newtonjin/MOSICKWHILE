@@ -82,8 +82,10 @@ pub struct AppConfig {
     pub side_restrictor: bool,
     /// Real peripheral blur (backdrop-filter on overlay / frost layers in bridge).
     pub real_peripheral_blur: bool,
-    /// Auto-detect games → faster FOV + clear-zone pinned to center on turns/glances.
-    pub gaming_mode_auto: bool,
+    /// Manual gaming mode: faster FOV + clear-zone pinned to center on turns/glances.
+    /// External overlay only — never uses process injection.
+    #[serde(alias = "gamingModeAuto")]
+    pub gaming_mode: bool,
 }
 
 impl Default for AppConfig {
@@ -124,7 +126,7 @@ impl AppConfig {
             predictive_fov: true,
             side_restrictor: true,
             real_peripheral_blur: true,
-            gaming_mode_auto: true,
+            gaming_mode: false,
         };
 
         match preset {

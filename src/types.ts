@@ -38,8 +38,8 @@ export interface AppConfig {
   predictiveFov: boolean;
   sideRestrictor: boolean;
   realPeripheralBlur: boolean;
-  /** Auto-detect games: faster FOV + clear zone centered on turns/glances. */
-  gamingModeAuto: boolean;
+  /** Manual gaming mode: faster FOV + clear zone centered on turns/glances. */
+  gamingMode: boolean;
 }
 
 export interface LiveMetrics {

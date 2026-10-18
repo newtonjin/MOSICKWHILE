@@ -1,7 +1,6 @@
 use serde::Serialize;
 
 use super::config::{AppConfig, RestFrameStyle};
-use super::gaming::GamingState;
 use super::metrics::LiveMetrics;
 use super::motion::MotionReading;
 use crate::sensing::{FaceSample, OneEuro};
@@ -100,12 +99,12 @@ impl MitigationEngine {
         dt: f32,
         metrics_seed: LiveMetrics,
         face: &FaceSample,
-        gaming: GamingState,
     ) -> OverlayFrame {
         let mut metrics = metrics_seed;
-        let gaming_on = cfg.gaming_mode_auto && gaming.active;
+        // Manual toggle only (external overlay — no inject / auto-detect).
+        let gaming_on = cfg.gaming_mode;
         metrics.gaming_active = gaming_on;
-        metrics.gaming_score = gaming.score;
+        metrics.gaming_score = if gaming_on { 1.0 } else { 0.0 };
 
         if !cfg.enabled {
             self.decay_outputs(dt, cfg);
@@ -137,22 +136,29 @@ impl MitigationEngine {
             target = ((target - cfg.motion_deadzone) / (1.0 - cfg.motion_deadzone)).clamp(0.0, 1.0);
         }
 
-        if cfg.face_sensing_enabled && face.ok && !face.present {
+        // Don't kill FOV when face drops in-game (gaming looks away / helmet / dark).
+        if !gaming_on && cfg.face_sensing_enabled && face.ok && !face.present {
             target *= 0.35;
         }
+        // Gaming: amplify motion drive so restriction stays strong (Forte-class).
+        if gaming_on {
+            target = (target * 1.35 + reading.pred.boost * 0.25).clamp(0.0, 1.0);
+        }
 
-        // Gaming: FOV restriction rises much faster (turns must not lag).
+        // Gaming: FOV restriction rises fast and holds harder.
         let pred_lead = cfg.predictive_fov && reading.pred.boost > reading.raw_drive + 0.08;
-        let attack_scale = if gaming_on { 0.38 } else { 1.0 };
-        let release_scale = if gaming_on { 0.72 } else { 1.0 };
         let tau = if target > self.smoothed_motion {
-            if pred_lead || gaming_on {
-                (cfg.attack_secs * 0.35 * attack_scale).max(0.045)
+            if gaming_on {
+                (cfg.attack_secs * 0.22).max(0.05)
+            } else if pred_lead {
+                (cfg.attack_secs * 0.45).max(0.06)
             } else {
-                (cfg.attack_secs * attack_scale).max(0.08)
+                cfg.attack_secs.max(0.12)
             }
+        } else if gaming_on {
+            (cfg.release_secs * 1.15).max(0.45) // hold restriction longer in fights
         } else {
-            (cfg.release_secs * release_scale).max(0.22)
+            cfg.release_secs.max(0.35)
         };
         let alpha = 1.0 - (-dt / tau).exp();
         self.smoothed_motion += (target - self.smoothed_motion) * alpha;
@@ -169,7 +175,12 @@ impl MitigationEngine {
             self.comfort_boost *= 0.95;
         }
 
-        let intensity = (cfg.intensity + self.comfort_boost).clamp(0.0, 1.0);
+        // Gaming rides above current intensity (≈ Forte floor).
+        let intensity = if gaming_on {
+            (cfg.intensity.max(0.88) + self.comfort_boost + 0.08).clamp(0.0, 1.0)
+        } else {
+            (cfg.intensity + self.comfort_boost).clamp(0.0, 1.0)
+        };
 
         // Yaw for side-restrictor only — ignore teleports / zero mouse boost.
         let yaw_raw = if reading.pred.teleport_rejected || reading.pred.boost < 0.04 {
@@ -355,19 +366,25 @@ impl MitigationEngine {
         let drive = (self.smoothed_motion * intensity).clamp(0.0, 1.0);
         let curved = drive.powf(1.25);
 
+        let vig_str = if gaming_on {
+            cfg.vignette_strength.max(0.92)
+        } else {
+            cfg.vignette_strength
+        };
         let mut vignette_target = if cfg.vignette_enabled {
-            curved * cfg.vignette_strength
+            curved * vig_str
         } else {
             0.0
         };
         // Predictive: allow a brief overshoot so FOV is already up when flow arrives.
-        if cfg.predictive_fov && pred_lead {
-            vignette_target = (vignette_target + reading.pred.boost * 0.18 * cfg.vignette_strength)
-                .clamp(0.0, 1.0);
+        if cfg.predictive_fov && (pred_lead || gaming_on) {
+            let over = if gaming_on { 0.28 } else { 0.18 };
+            vignette_target =
+                (vignette_target + reading.pred.boost * over * vig_str).clamp(0.0, 1.0);
         }
 
         let slew_up = if gaming_on {
-            cfg.vignette_slew_up * 2.4
+            cfg.vignette_slew_up * 2.8
         } else if pred_lead {
             cfg.vignette_slew_up * 1.8
         } else {
@@ -481,8 +498,9 @@ impl MitigationEngine {
                     .max((self.clear_y - 0.5).abs())
                     .clamp(0.0, 0.5);
                 let shrink = edge * 0.22;
-                let boost = if metrics.gaming_active { 0.04 } else { 0.0 };
-                (cfg.foveated_clear_radius - shrink + boost).clamp(0.18, 0.62)
+                // Gaming: tighter clear zone → stronger peripheral FOV cut.
+                let gaming_tight = if metrics.gaming_active { -0.06 } else { 0.0 };
+                (cfg.foveated_clear_radius - shrink + gaming_tight).clamp(0.16, 0.58)
             },
             foveated_clear: cfg.foveated_clear_enabled,
             virtual_nose: matches!(rest_style, RestFrameStyle::VirtualNose),

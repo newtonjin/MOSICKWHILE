@@ -4,8 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::engine::{
-    AppConfig, GameDetector, GamingState, LiveMetrics, MitigationEngine, MotionEstimator,
-    OverlayFrame, RestFrameStyle,
+    AppConfig, LiveMetrics, MitigationEngine, MotionEstimator, OverlayFrame, RestFrameStyle,
 };
 use crate::sensing::{FaceSensor, SharedDisplay};
 
@@ -21,8 +20,6 @@ pub struct AppState {
     pub panel_visible: AtomicBool,
     pub face: Arc<FaceSensor>,
     pub display: Arc<SharedDisplay>,
-    pub game_detector: Mutex<GameDetector>,
-    pub gaming: Mutex<GamingState>,
 }
 
 impl AppState {
@@ -70,28 +67,7 @@ impl AppState {
             panel_visible: AtomicBool::new(true),
             face,
             display,
-            game_detector: Mutex::new(GameDetector::default()),
-            gaming: Mutex::new(GamingState::default()),
         })
-    }
-
-    pub fn update_gaming(
-        &self,
-        bridge_hooked: bool,
-        peri_flow: f32,
-        rotational: f32,
-        mouse_boost: f32,
-        dt: f32,
-    ) -> GamingState {
-        let st = self.game_detector.lock().update(
-            bridge_hooked,
-            peri_flow,
-            rotational,
-            mouse_boost,
-            dt,
-        );
-        *self.gaming.lock() = st;
-        st
     }
 
     pub fn request_stop(&self) {
@@ -103,7 +79,7 @@ impl AppState {
         self.running.load(Ordering::Relaxed)
     }
 
-    pub fn tick(&self, bridge_hooked: bool) -> OverlayFrame {
+    pub fn tick(&self) -> OverlayFrame {
         let now = Instant::now();
         let mut last = self.last_tick.lock();
         let dt = now.duration_since(*last).as_secs_f32().clamp(0.001, 0.1);
@@ -125,24 +101,10 @@ impl AppState {
             (reading, metrics)
         };
 
-        let gaming = if cfg.gaming_mode_auto {
-            self.update_gaming(
-                bridge_hooked,
-                reading.0.flow.peripheral_flow,
-                reading.0.flow.rotational,
-                reading.0.pred.boost,
-                dt,
-            )
-        } else {
-            let off = GamingState::default();
-            *self.gaming.lock() = off;
-            off
-        };
-
         let face = self.face.latest();
         let frame = {
             let mut engine = self.engine.lock();
-            engine.tick(&reading.0, &cfg, dt, reading.1, &face, gaming)
+            engine.tick(&reading.0, &cfg, dt, reading.1, &face)
         };
 
         *self.last_frame.lock() = frame.clone();

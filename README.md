@@ -10,24 +10,20 @@ Não precisa instalar Node, Rust nem dependências.
 2. Baixe **`MOSICKWHILE-windows-x64.zip`** (portátil) **ou** o instalador `.exe`
 3. Extraia (se zip) e execute **`MOSICKWHILE.exe`**
 
-Pronto. Webcam (opcional, pupilas), tray ao minimizar, hotkeys abaixo.
-
 | Atalho | Ação |
 |--------|------|
 | `Ctrl+Shift+M` | Liga/desliga overlay |
 | `Ctrl+Shift+=` / `-` | Intensidade |
 
-### Fullscreen exclusivo
+### Como jogar (sem crash)
 
-1. Abra o jogo  
-2. No painel: **Anexar ao jogo (3s)** e foque o jogo  
-3. A bridge desenha no Present (DX9/11/12)
-
-> Anti-cheat (EAC / BattlEye / Vanguard) pode bloquear injeção. Use por sua conta e risco.
+- Overlay **externo** no monitor, sempre acima (sem injetar DLL no jogo)
+- No jogo, use **Borderless / Janela sem bordas / Fullscreen windowed**
+- Fullscreen exclusivo puro do DirectX não deixa janelas externas por cima — por isso não usamos inject (podia crashar o jogo)
 
 ### Modo gaming
 
-Detecta jogo em foco / bridge ativa: FOV mais rápido; viradas e olhadas de relance mantêm a zona clara no **centro** (sem depender do cursor).
+Ative **manualmente** no painel. FOV mais rápido; viradas e olhadas de relance mantêm a zona clara no **centro**.
 
 ---
 
@@ -44,12 +40,6 @@ Detecta jogo em foco / bridge ativa: FOV mais rápido; viradas e olhadas de rela
 ```bash
 npm install
 npm run tauri build
-```
-
-Artefatos: `target/release/mosickwhile.exe` e instalador NSIS em `target/release/bundle/nsis/`.
-
-```bash
-npm run tauri dev
 ```
 
 ## Licença / privacidade

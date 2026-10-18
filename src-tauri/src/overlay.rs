@@ -8,8 +8,8 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowDisplayAffinity, SetWindowLongPtrW,
     SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST, LWA_ALPHA, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, WDA_EXCLUDEFROMCAPTURE, WS_EX_APPWINDOW, WS_EX_LAYERED,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WDA_EXCLUDEFROMCAPTURE, WS_EX_APPWINDOW,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
 };
 
 pub const OVERLAY_LABEL: &str = "overlay";
@@ -48,7 +48,33 @@ pub fn show_overlay(app: &AppHandle) -> tauri::Result<()> {
     win.show()?;
     let _ = win.set_always_on_top(true);
     harden_overlay_window(&win)?;
+    reassert_topmost(&win);
     Ok(())
+}
+
+/// Keep the external overlay above games on the active monitor (no DLL inject).
+/// Works with borderless / windowed / fullscreen-windowed. True exclusive FS
+/// usually needs the game set to Borderless.
+pub fn reassert_topmost(window: &tauri::WebviewWindow) {
+    let _ = window.set_always_on_top(true);
+    #[cfg(windows)]
+    {
+        let Ok(hwnd_raw) = window.hwnd() else {
+            return;
+        };
+        let hwnd = HWND(hwnd_raw.0 as *mut _);
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
+        }
+    }
 }
 
 pub fn hide_overlay(app: &AppHandle) -> tauri::Result<()> {
@@ -135,7 +161,8 @@ fn apply_win32_clickthrough(window: &tauri::WebviewWindow) {
         style |= (WS_EX_LAYERED.0
             | WS_EX_TRANSPARENT.0
             | WS_EX_TOOLWINDOW.0
-            | WS_EX_NOACTIVATE.0) as isize;
+            | WS_EX_NOACTIVATE.0
+            | WS_EX_TOPMOST.0) as isize;
         style &= !(WS_EX_APPWINDOW.0 as isize);
         let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style);
         let _ = SetLayeredWindowAttributes(hwnd, Default::default(), 255, LWA_ALPHA);
@@ -146,7 +173,7 @@ fn apply_win32_clickthrough(window: &tauri::WebviewWindow) {
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
         );
         let _ = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
     }

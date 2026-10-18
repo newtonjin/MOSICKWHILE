@@ -47,6 +47,9 @@
             <button data-preset="light" type="button">Leve</button>
             <button data-preset="medium" type="button" class="active">Médio</button>
             <button data-preset="aggressive" type="button">Forte</button>
+            <button id="btn-gaming" type="button" class="gaming-btn" title="Modo gaming (manual)">
+              Gaming
+            </button>
           </div>
           <label class="slide tight-top">
             <span>Intensidade <output id="intensity-out">70%</output></span>
@@ -58,17 +61,15 @@
           </label>
         </section>
 
-        <section class="block">
+        <section class="block tip">
           <div class="row-label">
-            <span>Fullscreen exclusivo</span>
-            <span class="hint" id="bridge-hint">bridge off</span>
+            <span>Como jogar</span>
+            <span class="hint" id="bridge-hint">overlay externo</span>
           </div>
-          <button id="btn-attach" class="power wide" type="button">
-            Anexar ao jogo (3s)
-          </button>
           <p class="attach-help">
-            Foque o jogo e clique — injeta no Present (DX9/11/12). Anti-cheat pode
-            bloquear.
+            Sem injeção (evita crash). Deixe o overlay <b>ON</b> e no jogo use
+            <b>Borderless / Janela sem bordas</b> — o FOV fica acima no monitor.
+            Fullscreen exclusivo puro do DirectX não deixa overlay externo por cima.
           </p>
         </section>
 
@@ -94,7 +95,6 @@
             <label><input id="comfort-ramp" type="checkbox" checked /> Comfort ramp</label>
             <label><input id="flow-dampen" type="checkbox" checked /> Flow dampen</label>
             <label><input id="auto-start" type="checkbox" checked /> Auto-start overlay</label>
-            <label><input id="gaming-mode" type="checkbox" checked /> Modo gaming (auto)</label>
           </div>
           <div class="row selects">
             <label class="inline">
