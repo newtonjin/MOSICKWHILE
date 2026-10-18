@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title></title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent !important;
+        pointer-events: none !important;
+        user-select: none;
+        cursor: none;
+      }
+      #blur-ring {
+        position: fixed;
+        inset: 0;
+        pointer-events: none !important;
+        z-index: 0;
+        opacity: 0;
+        /* Real peripheral blur of game pixels behind the transparent window */
+        backdrop-filter: blur(0px) saturate(0.85);
+        -webkit-backdrop-filter: blur(0px) saturate(0.85);
+        /* Mask updated from JS: clear center, blur periphery */
+        -webkit-mask-image: radial-gradient(
+          circle at 50% 50%,
+          transparent 0%,
+          transparent 38%,
+          #000 72%,
+          #000 100%
+        );
+        mask-image: radial-gradient(
+          circle at 50% 50%,
+          transparent 0%,
+          transparent 38%,
+          #000 72%,
+          #000 100%
+        );
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        pointer-events: none !important;
+        background: transparent;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="blur-ring" aria-hidden="true"></div>
+    <canvas id="overlay"></canvas>
+    <script type="module" src="/src/overlay.ts"></script>
+  </body>
+</html>

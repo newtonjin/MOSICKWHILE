@@ -1,0 +1,22 @@
+[package]
+name = "mosickwhile-bridge"
+version = "0.2.0"
+edition = "2021"
+description = "In-process DXGI Present bridge — works in exclusive fullscreen"
+
+[lib]
+crate-type = ["cdylib"]
+name = "mosickwhile_bridge"
+
+[dependencies]
+hudhook = { version = "0.9", default-features = false, features = ["dx9", "dx11", "dx12"] }
+imgui = "0.12"
+once_cell = "1"
+parking_lot = "0.12"
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_System_Memory",
+  "Win32_System_SystemServices",
+] }

@@ -1,0 +1,46 @@
+# Dependencies & build
+node_modules/
+dist/
+dist-ssr/
+target/
+src-tauri/target/
+**/target/
+
+# Local / editor
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs & env (never commit secrets)
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+.env
+.env.*
+!.env.example
+
+# Built binaries (ship via GitHub Releases, not git)
+dist-release/
+_release/
+*.exe
+!scripts/**/*.exe
+src-tauri/mosickwhile_bridge.dll
+bridge/**/*.dll
+bridge/**/*.lib
+bridge/**/*.exp
+bridge/**/*.pdb
+
+# OS / misc
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MOSICKWHILE</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="top">
+        <div class="brand-block">
+          <strong class="brand">MOSICKWHILE</strong>
+          <span id="overlay-status" class="badge off">Off</span>
+          <span id="gaming-status" class="badge game off" hidden>GAME</span>
+        </div>
+        <button id="btn-power" class="power" type="button" title="Liga/desliga proteção">
+          ON
+        </button>
+      </header>
+
+      <div class="scroll">
+        <section class="readouts" aria-label="Estado ao vivo">
+          <div class="stat">
+            <span>Conforto</span>
+            <strong id="comfort-readout">—</strong>
+            <div class="bar"><i id="comfort-bar"></i></div>
+          </div>
+          <div class="stat">
+            <span>Motion</span>
+            <strong id="m-motion">0%</strong>
+            <div class="bar"><i id="motion-bar"></i></div>
+          </div>
+          <div class="stat">
+            <span>FOV</span>
+            <strong id="m-fov">0%</strong>
+            <div class="bar"><i id="fov-bar"></i></div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="row-label">
+            <span>Preset</span>
+            <span class="hint" id="cap-hint">captura…</span>
+          </div>
+          <div class="presets" id="preset-row">
+            <button data-preset="light" type="button">Leve</button>
+            <button data-preset="medium" type="button" class="active">Médio</button>
+            <button data-preset="aggressive" type="button">Forte</button>
+          </div>
+          <label class="slide tight-top">
+            <span>Intensidade <output id="intensity-out">70%</output></span>
+            <input id="intensity" type="range" min="0" max="100" value="70" />
+          </label>
+          <label class="slide">
+            <span>Força FOV <output id="vig-str-out">82%</output></span>
+            <input id="vignette-strength" type="range" min="0" max="100" value="82" />
+          </label>
+        </section>
+
+        <section class="block">
+          <div class="row-label">
+            <span>Fullscreen exclusivo</span>
+            <span class="hint" id="bridge-hint">bridge off</span>
+          </div>
+          <button id="btn-attach" class="power wide" type="button">
+            Anexar ao jogo (3s)
+          </button>
+          <p class="attach-help">
+            Foque o jogo e clique — injeta no Present (DX9/11/12). Anti-cheat pode
+            bloquear.
+          </p>
+        </section>
+
+        <details class="panel" open>
+          <summary>Proteção</summary>
+          <div class="checks">
+            <label><input id="vignette" type="checkbox" checked /> FOV dinâmica</label>
+            <label><input id="asymmetric" type="checkbox" checked /> Assimétrica</label>
+            <label><input id="ground" type="checkbox" checked /> Chão visível</label>
+            <label><input id="blur" type="checkbox" checked /> Blur periférico</label>
+            <label><input id="real-blur" type="checkbox" checked /> Blur real</label>
+            <label><input id="foveated" type="checkbox" checked /> Zona foveal</label>
+            <label><input id="predictive" type="checkbox" checked /> FOV preditiva</label>
+            <label><input id="side-restrictor" type="checkbox" checked /> Side restrictor</label>
+          </div>
+        </details>
+
+        <details class="panel" open>
+          <summary>Olhar &amp; rest frame</summary>
+          <div class="checks">
+            <label><input id="face-sensing" type="checkbox" checked /> Webcam / pupilas</label>
+            <label><input id="rest-frame" type="checkbox" checked /> Rest frame</label>
+            <label><input id="comfort-ramp" type="checkbox" checked /> Comfort ramp</label>
+            <label><input id="flow-dampen" type="checkbox" checked /> Flow dampen</label>
+            <label><input id="auto-start" type="checkbox" checked /> Auto-start overlay</label>
+            <label><input id="gaming-mode" type="checkbox" checked /> Modo gaming (auto)</label>
+          </div>
+          <div class="row selects">
+            <label class="inline">
+              Rest frame
+              <select id="rest-style">
+                <option value="earth_horizon">Horizonte terra</option>
+                <option value="horizon">Horizonte</option>
+                <option value="virtual_nose">Nariz virtual</option>
+                <option value="crosshair">Cruz</option>
+                <option value="grid">Grade</option>
+                <option value="none">Nenhum</option>
+              </select>
+            </label>
+            <label class="inline">
+              Fonte motion
+              <select id="motion-source">
+                <option value="capture">DXGI</option>
+                <option value="demo">Demo</option>
+                <option value="manual">Manual</option>
+              </select>
+            </label>
+          </div>
+          <div id="manual-block" hidden>
+            <label class="slide">
+              <span>Motion manual <output id="manual-out">45%</output></span>
+              <input id="manual-motion" type="range" min="0" max="100" value="45" />
+            </label>
+          </div>
+        </details>
+
+        <details class="panel">
+          <summary>Telemetria</summary>
+          <div class="telemetry">
+            <div><span>Peri</span><b id="m-peri">0%</b></div>
+            <div><span>Centro</span><b id="m-cent">0%</b></div>
+            <div><span>Rot</span><b id="m-rot">0%</b></div>
+            <div><span>Trans</span><b id="m-trans">0%</b></div>
+            <div><span>Latência</span><b id="m-lat">—</b></div>
+            <div><span>FPS</span><b id="m-fps">—</b></div>
+            <div><span>Pico</span><b id="m-peak">0%</b></div>
+            <div><span>Sessão</span><b id="m-secs">0s</b></div>
+            <div class="span2"><span>Rosto</span><b id="m-face">—</b></div>
+            <div><span>Pupila Q</span><b id="m-pupil-q">—</b></div>
+            <div><span>Acordo</span><b id="m-pupil-agree">—</b></div>
+            <div><span>Lock</span><b id="m-pupil-lock">—</b></div>
+            <div><span>Jitter</span><b id="m-pupil-jit">—</b></div>
+          </div>
+        </details>
+      </div>
+
+      <footer class="foot">
+        <button id="btn-toggle-engine" type="button" class="linkish">Pausar motor</button>
+        <span class="foot-hint">Ctrl+Shift+M · × → tray</span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
