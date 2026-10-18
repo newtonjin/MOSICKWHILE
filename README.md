@@ -6,7 +6,7 @@
 
 Não precisa instalar Node, Rust nem dependências.
 
-1. Abra a página de **[Releases](../../releases/latest)**
+1. Abra **[Releases](https://github.com/newtonjin/MOSICKWHILE/releases/latest)**
 2. Baixe **`MOSICKWHILE-windows-x64.zip`** (portátil) **ou** o instalador `.exe`
 3. Extraia (se zip) e execute **`MOSICKWHILE.exe`**
 
