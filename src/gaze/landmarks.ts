@@ -3,15 +3,15 @@ type NormalizedLandmark = { x: number; y: number; z: number; visibility?: number
 /** MediaPipe Face Landmarker iris indices. */
 const L_IRIS = [468, 469, 470, 471, 472] as const;
 const R_IRIS = [473, 474, 475, 476, 477] as const;
-// Eye corners / lids
-const L_OUTER = 33;
-const L_INNER = 133;
-const L_TOP = 159;
-const L_BOT = 145;
-const R_OUTER = 263;
-const R_INNER = 362;
-const R_TOP = 386;
-const R_BOT = 374;
+// Eye corners / lids — exported for pupil crop localizer.
+export const L_OUTER = 33;
+export const L_INNER = 133;
+export const L_TOP = 159;
+export const L_BOT = 145;
+export const R_OUTER = 263;
+export const R_INNER = 362;
+export const R_TOP = 386;
+export const R_BOT = 374;
 
 export type RawGaze = {
   present: boolean;

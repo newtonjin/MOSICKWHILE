@@ -172,5 +172,17 @@ pub fn set_gaze_external(
     external: bool,
 ) -> Result<(), String> {
     state.face.set_external(external);
+    if external {
+        state.face.release_camera();
+    }
+    Ok(())
+}
+
+/// Release native webcam so the MediaPipe frontend can open it exclusively.
+#[tauri::command]
+pub fn release_camera(state: State<'_, std::sync::Arc<AppState>>) -> Result<(), String> {
+    state.face.release_camera();
+    // Brief yield so MSMF tears down the capture graph before getUserMedia.
+    std::thread::sleep(std::time::Duration::from_millis(350));
     Ok(())
 }

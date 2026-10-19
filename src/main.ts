@@ -50,8 +50,11 @@ async function syncGazeDriver(on: boolean) {
     hint.textContent = s.calibrated ? s.status : "calibrar";
     hint.classList.toggle("ok", s.calibrated && s.running);
     hint.classList.toggle("bad", !s.running);
-  } catch {
-    hint.textContent = "cam-fail";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    hint.textContent = /in use|NotReadable|busy/i.test(msg)
+      ? "cam-busy"
+      : "cam-fail";
     hint.classList.add("bad");
     hint.classList.remove("ok");
   }

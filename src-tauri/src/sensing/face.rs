@@ -106,51 +106,24 @@ impl FaceSensor {
     pub fn set_enabled(self: &Arc<Self>, on: bool) {
         self.enabled.store(on, Ordering::SeqCst);
         if !on {
+            // Always drop the native camera — MediaPipe owns the webcam.
             self.running.store(false, Ordering::SeqCst);
-            return;
         }
-        // Prefer MediaPipe external path; only fall back to Seeta if no
-        // external samples arrived recently.
-        if self.external.load(Ordering::SeqCst) {
-            return;
-        }
-        let stale = self
-            .last_external
-            .lock()
-            .elapsed()
-            > Duration::from_secs(4);
-        if stale && !self.running.load(Ordering::SeqCst) {
-            self.start();
-        }
+        // Do NOT start the Seeta/nokhwa loop. Dual-open with getUserMedia
+        // causes Windows "Device in use" / NotReadableError.
+    }
+
+    /// Force-release any native camera handle (call before getUserMedia).
+    pub fn release_camera(&self) {
+        self.external.store(true, Ordering::SeqCst);
+        self.running.store(false, Ordering::SeqCst);
+        *self.last_external.lock() = Instant::now();
     }
 
     pub fn stop(&self) {
         self.enabled.store(false, Ordering::SeqCst);
         self.running.store(false, Ordering::SeqCst);
         self.external.store(false, Ordering::SeqCst);
-    }
-
-    fn start(self: &Arc<Self>) {
-        if self
-            .running
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            return;
-        }
-        let this = Arc::clone(self);
-        std::thread::spawn(move || {
-            if let Err(e) = run_loop(&this) {
-                *this.latest.lock() = FaceSample {
-                    ok: false,
-                    status: e,
-                    face_x: 0.5,
-                    face_y: 0.5,
-                    ..Default::default()
-                };
-            }
-            this.running.store(false, Ordering::SeqCst);
-        });
     }
 }
 

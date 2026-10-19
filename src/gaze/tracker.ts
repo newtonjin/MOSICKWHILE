@@ -5,13 +5,25 @@ import {
   fitMap,
   loadMap,
   mapGaze,
+  median,
   saveMap,
   type CalibSample,
   type GazeFeatures,
   type GazeMap,
 } from "./calibration";
-import { extractGaze } from "./landmarks";
+import {
+  extractGaze,
+  L_BOT,
+  L_INNER,
+  L_OUTER,
+  L_TOP,
+  R_BOT,
+  R_INNER,
+  R_OUTER,
+  R_TOP,
+} from "./landmarks";
 import { onnxGaze } from "./onnxGaze";
+import { pupilLocalizer } from "./pupilLocalizer";
 
 export type GazeStatus = {
   running: boolean;
@@ -21,6 +33,8 @@ export type GazeStatus = {
   screenX: number;
   screenY: number;
   onnx: boolean;
+  pupilQ: number;
+  glassesLikely: boolean;
 };
 
 type FacePush = {
@@ -65,6 +79,9 @@ export class GazeTracker {
   private onnxPitch = 0;
   private onnxConf = 0;
   private onnxBusy = false;
+  private pupilQ = 0;
+  private glare = 0;
+  private pupilTick = 0;
   onStatus?: (s: GazeStatus) => void;
 
   getStatus(): GazeStatus {
@@ -76,6 +93,8 @@ export class GazeTracker {
       screenX: this.sx,
       screenY: this.sy,
       onnx: onnxGaze.ok,
+      pupilQ: this.pupilQ,
+      glassesLikely: this.glare > 0.08,
     };
   }
 
@@ -88,6 +107,18 @@ export class GazeTracker {
     this.status = "loading";
     this.emit();
     try {
+      // Release any Rust/Seeta MSMF handle BEFORE getUserMedia (Windows exclusive).
+      try {
+        await invoke("release_camera");
+      } catch {
+        await invoke("set_gaze_external", { external: true }).catch(() => undefined);
+        await sleep(350);
+      }
+
+      // Drop a leftover stream from a previous failed start.
+      this.stream?.getTracks().forEach((t) => t.stop());
+      this.stream = null;
+
       const vision = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
       const opts = {
         runningMode: "VIDEO" as const,
@@ -113,9 +144,8 @@ export class GazeTracker {
         });
       }
 
-      // Appearance gaze — best-effort (iris still works if ONNX fails).
       void onnxGaze.init().then((ok) => {
-        if (ok) this.status = this.map ? "onnx+iris" : "needs-calib";
+        if (ok) this.status = this.map ? "pupil+onnx" : "needs-calib";
         this.emit();
       });
 
@@ -124,30 +154,24 @@ export class GazeTracker {
       this.video.muted = true;
       this.video.width = 640;
       this.video.height = 480;
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: "user",
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 30, max: 30 },
-        },
-      });
+
+      this.stream = await openCameraWithRetry();
       this.video.srcObject = this.stream;
       await this.video.play();
 
       await invoke("set_gaze_external", { external: true });
 
       this.running = true;
-      this.status = this.map
-        ? onnxGaze.ok
-          ? "onnx+iris"
-          : "iris-lock"
-        : "needs-calib";
+      this.status = this.map ? "pupil+onnx" : "needs-calib";
       this.emit();
       this.loop();
     } catch (e) {
-      this.status = `cam-fail: ${e instanceof Error ? e.message : String(e)}`;
+      const msg = e instanceof Error ? e.message : String(e);
+      const busy =
+        /Device in use|NotReadableError|Could not start video|in use/i.test(msg);
+      this.status = busy
+        ? "cam-busy — feche Zoom/Teams/OBS e reabra"
+        : `cam-fail: ${msg}`;
       this.running = false;
       this.emit();
       await this.stop();
@@ -176,6 +200,10 @@ export class GazeTracker {
     }
   }
 
+  /**
+   * Quality-gated sampling: median of good frames only.
+   * Glasses → accept ONNX-strong frames even if pupilQ is low.
+   */
   async sampleFor(
     ms: number,
     onProgress?: (t: number) => void,
@@ -183,32 +211,63 @@ export class GazeTracker {
     const t0 = performance.now();
     const buf: GazeFeatures[] = [];
     while (performance.now() - t0 < ms) {
-      if (this.lastFeat) buf.push(this.lastFeat);
+      const f = this.lastFeat;
+      if (f) {
+        const good =
+          f.pupilQ >= 0.32 ||
+          (onnxGaze.ok && Math.abs(f.onnxYaw) + Math.abs(f.onnxPitch) > 0.02);
+        if (good) buf.push(f);
+      }
       onProgress?.((performance.now() - t0) / ms);
       await sleep(33);
     }
-    if (buf.length < 4) return null;
-    const slice = buf.slice(Math.floor(buf.length * 0.35));
-    const avg = (k: keyof GazeFeatures) =>
-      slice.reduce((s, f) => s + f[k], 0) / slice.length;
+    if (buf.length < 5) return null;
+    // Use upper half of samples (after settle).
+    const slice = buf.slice(Math.floor(buf.length * 0.4));
+    const pick = (k: keyof GazeFeatures) => median(slice.map((f) => f[k]));
     return {
-      gx: avg("gx"),
-      gy: avg("gy"),
-      yaw: avg("yaw"),
-      pitch: avg("pitch"),
-      onnxYaw: avg("onnxYaw"),
-      onnxPitch: avg("onnxPitch"),
+      gx: pick("gx"),
+      gy: pick("gy"),
+      yaw: pick("yaw"),
+      pitch: pick("pitch"),
+      onnxYaw: pick("onnxYaw"),
+      onnxPitch: pick("onnxPitch"),
+      pupilQ: pick("pupilQ"),
     };
   }
 
   finishCalibration(samples: CalibSample[]): boolean {
-    const map = fitMap(samples);
+    // Weight edge samples higher (right/left bias with glasses).
+    const weighted = samples.map((s) => {
+      const edge = Math.max(Math.abs(s.x - 0.5), Math.abs(s.y - 0.5)) * 2;
+      const w = 1 + edge * 0.85 + (1 - s.pupilQ) * 0.35;
+      return { ...s, weight: w };
+    });
+    const map = fitMap(weighted);
     if (!map) return false;
     this.map = map;
     saveMap(map);
-    this.status = onnxGaze.ok ? "onnx+iris" : "iris-lock";
+    this.status = "pupil+onnx";
     this.emit();
     return true;
+  }
+
+  /** Quick validation: mean |error| at a few hold points. */
+  async validateMap(
+    points: { x: number; y: number }[],
+  ): Promise<number> {
+    if (!this.map) return 1;
+    let err = 0;
+    for (const p of points) {
+      const feat = await this.sampleFor(700);
+      if (!feat) {
+        err += 0.25;
+        continue;
+      }
+      const m = mapGaze(this.map, feat);
+      err += Math.hypot(m.x - p.x, m.y - p.y);
+    }
+    return err / Math.max(points.length, 1);
   }
 
   recenter(): void {
@@ -235,7 +294,7 @@ export class GazeTracker {
 
   private consume(res: Awaited<ReturnType<FaceLandmarker["detectForVideo"]>>) {
     const face = res.faceLandmarks?.[0];
-    if (!face) {
+    if (!face || !this.video) {
       this.lockRate *= 0.92;
       this.trust *= 0.85;
       this.status = "no-face";
@@ -257,13 +316,56 @@ export class GazeTracker {
       }
     }
 
-    const raw = extractGaze(face, matrix, blinkL, blinkR);
+    const iris = extractGaze(face, matrix, blinkL, blinkR);
 
-    // Kick ONNX asynchronously (~10 Hz) — never block the iris path.
-    if (onnxGaze.ok && this.video && !this.onnxBusy && raw.blink < 0.5) {
+    // —— Dedicated pupil localization on each eye crop (~every other frame) ——
+    this.pupilTick++;
+    let pupilGx = iris.gx;
+    let pupilGy = iris.gy;
+    let pupilQ = iris.trust * 0.5;
+    let glare = this.glare;
+    if (this.pupilTick % 2 === 0 && iris.blink < 0.45) {
+      const L = pupilLocalizer.locate(
+        this.video,
+        face[L_OUTER],
+        face[L_INNER],
+        face[L_TOP],
+        face[L_BOT],
+      );
+      const R = pupilLocalizer.locate(
+        this.video,
+        face[R_OUTER],
+        face[R_INNER],
+        face[R_TOP],
+        face[R_BOT],
+      );
+      glare = (L.glare + R.glare) * 0.5;
+      this.glare = this.glare * 0.7 + glare * 0.3;
+      if (L.ok || R.ok) {
+        const wl = L.ok ? L.quality : 0.05;
+        const wr = R.ok ? R.quality : 0.05;
+        pupilGx = (L.gx * wl + R.gx * wr) / (wl + wr);
+        pupilGy = (L.gy * wl + R.gy * wr) / (wl + wr);
+        pupilQ = Math.max(L.quality, R.quality);
+        // Blend a little MediaPipe iris when both agree.
+        if (iris.irisOk && iris.agreement > 0.55) {
+          pupilGx = pupilGx * 0.72 + iris.gx * 0.28;
+          pupilGy = pupilGy * 0.72 + iris.gy * 0.28;
+          pupilQ = Math.max(pupilQ, iris.trust * 0.75);
+        }
+      } else if (iris.irisOk) {
+        pupilGx = iris.gx;
+        pupilGy = iris.gy;
+        pupilQ = iris.trust * 0.55;
+      }
+    }
+    this.pupilQ = this.pupilQ * 0.75 + pupilQ * 0.25;
+
+    // ONNX appearance gaze — stronger when glasses/glare ruin pupil.
+    if (onnxGaze.ok && !this.onnxBusy && iris.blink < 0.5) {
       this.onnxBusy = true;
       void onnxGaze
-        .estimate(this.video, face, 85)
+        .estimate(this.video, face, this.glare > 0.1 ? 70 : 95)
         .then((g) => {
           if (g) {
             this.onnxYaw = g.yaw;
@@ -276,24 +378,32 @@ export class GazeTracker {
         });
     }
 
-    // Fuse iris socket with appearance angles into a single gaze proxy.
     const onnxGx = Math.sin(this.onnxYaw) * Math.cos(this.onnxPitch);
     const onnxGy = Math.sin(this.onnxPitch);
-    const ow = onnxGaze.ok ? 0.52 + this.onnxConf * 0.2 : 0;
+    // Glasses / low pupilQ → trust ONNX more (fixes right-edge stuck vignette).
+    const glasses = this.glare > 0.08 || this.pupilQ < 0.34;
+    let ow = 0;
+    if (onnxGaze.ok) {
+      ow = glasses
+        ? 0.62 + this.onnxConf * 0.22
+        : 0.38 + this.onnxConf * 0.18 + (1 - this.pupilQ) * 0.2;
+      ow = Math.min(0.88, ow);
+    }
     const iw = 1 - ow;
-    const gx = raw.gx * iw + onnxGx * ow;
-    const gy = raw.gy * iw + onnxGy * ow;
+    const gx = pupilGx * iw + onnxGx * ow;
+    const gy = pupilGy * iw + onnxGy * ow;
 
     this.lastFeat = {
       gx,
       gy,
-      yaw: raw.yaw,
-      pitch: raw.pitch,
+      yaw: iris.yaw,
+      pitch: iris.pitch,
       onnxYaw: this.onnxYaw,
       onnxPitch: this.onnxPitch,
+      pupilQ: this.pupilQ,
     };
 
-    if (raw.blink > 0.55) {
+    if (iris.blink > 0.55) {
       this.lockRate = this.lockRate * 0.9 + 0.05;
       this.push(true);
       this.status = "blink";
@@ -308,24 +418,23 @@ export class GazeTracker {
     this.prevY = screen.y;
     this.sx = screen.x;
     this.sy = screen.y;
-    this.trust = Math.max(raw.trust, this.onnxConf * 0.85);
+    this.trust = Math.max(this.pupilQ, this.onnxConf * (glasses ? 0.95 : 0.8));
     this.lockRate =
-      this.lockRate * 0.88 + (raw.irisOk || onnxGaze.ok ? 0.12 : 0.02);
+      this.lockRate * 0.88 +
+      (this.pupilQ > 0.3 || onnxGaze.ok ? 0.12 : 0.02);
     this.status = this.map
-      ? onnxGaze.ok
-        ? "onnx+iris"
-        : raw.irisOk
-          ? "iris-lock"
-          : "face-only"
+      ? glasses
+        ? "glasses+onnx"
+        : "pupil+onnx"
       : "needs-calib";
 
     this.push(
       true,
-      raw.agreement,
-      raw.roll,
-      raw.yaw,
-      raw.pitch,
-      raw.irisOk || onnxGaze.ok,
+      iris.agreement,
+      iris.roll,
+      iris.yaw,
+      iris.pitch,
+      this.pupilQ > 0.28 || onnxGaze.ok,
     );
     this.emit();
   }
@@ -339,7 +448,7 @@ export class GazeTracker {
     irisOk = false,
   ) {
     const now = performance.now();
-    if (now - this.pushAcc < 45 && present) return;
+    if (now - this.pushAcc < 40 && present) return;
     this.pushAcc = now;
 
     const sample: FacePush = {
@@ -356,7 +465,7 @@ export class GazeTracker {
       calibrated: !!this.map,
       pupilsOk: irisOk && present,
       pupilConfidence: this.trust,
-      pupilQuality: this.trust,
+      pupilQuality: this.pupilQ,
       pupilAgreement: agreement,
       pupilLockRate: this.lockRate,
       pupilJitter: this.jitter,
@@ -373,6 +482,46 @@ export class GazeTracker {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+async function openCameraWithRetry(): Promise<MediaStream> {
+  const constraints: MediaStreamConstraints = {
+    audio: false,
+    video: {
+      facingMode: "user",
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 24, max: 30 },
+    },
+  };
+  let last: unknown;
+  for (let i = 0; i < 4; i++) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (e) {
+      last = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/Device in use|NotReadableError|Could not start/i.test(msg)) {
+        throw e;
+      }
+      // Ask Rust again + wait for MSMF teardown.
+      try {
+        await invoke("release_camera");
+      } catch {
+        await sleep(400);
+      }
+      await sleep(450 + i * 200);
+    }
+  }
+  // Last resort: any camera, minimal constraints.
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: true,
+    });
+  } catch {
+    throw last instanceof Error ? last : new Error(String(last));
+  }
 }
 
 export const gazeTracker = new GazeTracker();
