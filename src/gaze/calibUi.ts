@@ -49,6 +49,13 @@ export async function runCalibrationWizard(
   card.appendChild(status);
 
   const samples: CalibSample[] = [];
+  // Remember FOV state — we hide it during calib and must restore after.
+  let wasOverlayOn = false;
+  try {
+    wasOverlayOn = await invoke<boolean>("is_overlay_active");
+  } catch {
+    wasOverlayOn = true; // badge usually ON; prefer restoring
+  }
 
   try {
     status.textContent = "Expandindo para o monitor…";
@@ -141,6 +148,15 @@ export async function runCalibrationWizard(
     root.hidden = true;
     root.innerHTML = "";
     await restoreWindowState(win, restore);
+    // Bring FOV / rest frame back — stop_overlay left them hidden while UI stayed "ON".
+    if (wasOverlayOn) {
+      try {
+        await sleep(120);
+        await invoke("start_overlay");
+      } catch (e) {
+        console.warn("restore overlay after calib failed", e);
+      }
+    }
   }
 }
 

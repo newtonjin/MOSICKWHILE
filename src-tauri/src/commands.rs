@@ -64,6 +64,7 @@ pub fn start_overlay(
 ) -> Result<(), String> {
     show_overlay(&app).map_err(|e| e.to_string())?;
     *state.overlay_visible.lock() = true;
+    let _ = app.emit("overlay-toggled", true);
     Ok(())
 }
 
@@ -74,6 +75,7 @@ pub fn stop_overlay(
 ) -> Result<(), String> {
     hide_overlay(&app).map_err(|e| e.to_string())?;
     *state.overlay_visible.lock() = false;
+    let _ = app.emit("overlay-toggled", false);
     Ok(())
 }
 
