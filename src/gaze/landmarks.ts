@@ -1,5 +1,3 @@
-import type { GazeFeatures } from "./calibration";
-
 type NormalizedLandmark = { x: number; y: number; z: number; visibility?: number };
 
 /** MediaPipe Face Landmarker iris indices. */
@@ -15,9 +13,13 @@ const R_INNER = 362;
 const R_TOP = 386;
 const R_BOT = 374;
 
-export type RawGaze = GazeFeatures & {
+export type RawGaze = {
   present: boolean;
   irisOk: boolean;
+  gx: number;
+  gy: number;
+  yaw: number;
+  pitch: number;
   blink: number;
   roll: number;
   trust: number;

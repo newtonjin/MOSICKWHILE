@@ -1,6 +1,6 @@
 [package]
 name = "mosickwhile"
-version = "0.4.0"
+version = "0.5.0"
 description = "Motion Sickness While Gaming — scientifically-driven overlay against gaming motion sickness"
 authors = ["MOSICKWHILE"]
 edition = "2021"

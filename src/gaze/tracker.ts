@@ -11,6 +11,7 @@ import {
   type GazeMap,
 } from "./calibration";
 import { extractGaze } from "./landmarks";
+import { onnxGaze } from "./onnxGaze";
 
 export type GazeStatus = {
   running: boolean;
@@ -19,6 +20,7 @@ export type GazeStatus = {
   trust: number;
   screenX: number;
   screenY: number;
+  onnx: boolean;
 };
 
 type FacePush = {
@@ -59,6 +61,10 @@ export class GazeTracker {
   private sx = 0.5;
   private sy = 0.5;
   private pushAcc = 0;
+  private onnxYaw = 0;
+  private onnxPitch = 0;
+  private onnxConf = 0;
+  private onnxBusy = false;
   onStatus?: (s: GazeStatus) => void;
 
   getStatus(): GazeStatus {
@@ -69,6 +75,7 @@ export class GazeTracker {
       trust: this.trust,
       screenX: this.sx,
       screenY: this.sy,
+      onnx: onnxGaze.ok,
     };
   }
 
@@ -106,6 +113,12 @@ export class GazeTracker {
         });
       }
 
+      // Appearance gaze — best-effort (iris still works if ONNX fails).
+      void onnxGaze.init().then((ok) => {
+        if (ok) this.status = this.map ? "onnx+iris" : "needs-calib";
+        this.emit();
+      });
+
       this.video = document.createElement("video");
       this.video.setAttribute("playsinline", "true");
       this.video.muted = true;
@@ -123,11 +136,14 @@ export class GazeTracker {
       this.video.srcObject = this.stream;
       await this.video.play();
 
-      // Stop Rust/Seeta camera — MediaPipe owns the webcam.
       await invoke("set_gaze_external", { external: true });
 
       this.running = true;
-      this.status = this.map ? "iris-lock" : "needs-calib";
+      this.status = this.map
+        ? onnxGaze.ok
+          ? "onnx+iris"
+          : "iris-lock"
+        : "needs-calib";
       this.emit();
       this.loop();
     } catch (e) {
@@ -160,7 +176,6 @@ export class GazeTracker {
     }
   }
 
-  /** Average features while user fixates a calibration target. */
   async sampleFor(
     ms: number,
     onProgress?: (t: number) => void,
@@ -181,6 +196,8 @@ export class GazeTracker {
       gy: avg("gy"),
       yaw: avg("yaw"),
       pitch: avg("pitch"),
+      onnxYaw: avg("onnxYaw"),
+      onnxPitch: avg("onnxPitch"),
     };
   }
 
@@ -189,7 +206,7 @@ export class GazeTracker {
     if (!map) return false;
     this.map = map;
     saveMap(map);
-    this.status = "iris-lock";
+    this.status = onnxGaze.ok ? "onnx+iris" : "iris-lock";
     this.emit();
     return true;
   }
@@ -241,14 +258,41 @@ export class GazeTracker {
     }
 
     const raw = extractGaze(face, matrix, blinkL, blinkR);
+
+    // Kick ONNX asynchronously (~10 Hz) — never block the iris path.
+    if (onnxGaze.ok && this.video && !this.onnxBusy && raw.blink < 0.5) {
+      this.onnxBusy = true;
+      void onnxGaze
+        .estimate(this.video, face, 85)
+        .then((g) => {
+          if (g) {
+            this.onnxYaw = g.yaw;
+            this.onnxPitch = g.pitch;
+            this.onnxConf = g.confidence;
+          }
+        })
+        .finally(() => {
+          this.onnxBusy = false;
+        });
+    }
+
+    // Fuse iris socket with appearance angles into a single gaze proxy.
+    const onnxGx = Math.sin(this.onnxYaw) * Math.cos(this.onnxPitch);
+    const onnxGy = Math.sin(this.onnxPitch);
+    const ow = onnxGaze.ok ? 0.52 + this.onnxConf * 0.2 : 0;
+    const iw = 1 - ow;
+    const gx = raw.gx * iw + onnxGx * ow;
+    const gy = raw.gy * iw + onnxGy * ow;
+
     this.lastFeat = {
-      gx: raw.gx,
-      gy: raw.gy,
+      gx,
+      gy,
       yaw: raw.yaw,
       pitch: raw.pitch,
+      onnxYaw: this.onnxYaw,
+      onnxPitch: this.onnxPitch,
     };
 
-    // Blink hold: keep last screen point briefly.
     if (raw.blink > 0.55) {
       this.lockRate = this.lockRate * 0.9 + 0.05;
       this.push(true);
@@ -264,15 +308,25 @@ export class GazeTracker {
     this.prevY = screen.y;
     this.sx = screen.x;
     this.sy = screen.y;
-    this.trust = raw.trust;
-    this.lockRate = this.lockRate * 0.88 + (raw.irisOk ? 0.12 : 0.02);
+    this.trust = Math.max(raw.trust, this.onnxConf * 0.85);
+    this.lockRate =
+      this.lockRate * 0.88 + (raw.irisOk || onnxGaze.ok ? 0.12 : 0.02);
     this.status = this.map
-      ? raw.irisOk
-        ? "iris-lock"
-        : "face-only"
+      ? onnxGaze.ok
+        ? "onnx+iris"
+        : raw.irisOk
+          ? "iris-lock"
+          : "face-only"
       : "needs-calib";
 
-    this.push(true, raw.agreement, raw.roll, raw.yaw, raw.pitch, raw.irisOk);
+    this.push(
+      true,
+      raw.agreement,
+      raw.roll,
+      raw.yaw,
+      raw.pitch,
+      raw.irisOk || onnxGaze.ok,
+    );
     this.emit();
   }
 
@@ -284,7 +338,6 @@ export class GazeTracker {
     pitch = 0,
     irisOk = false,
   ) {
-    // ~30 Hz detect, push ~20 Hz to Rust.
     const now = performance.now();
     if (now - this.pushAcc < 45 && present) return;
     this.pushAcc = now;

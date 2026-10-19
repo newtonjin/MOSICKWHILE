@@ -329,9 +329,10 @@ async function maybePromptCalib() {
 gazeTracker.onStatus = (s) => {
   const hint = $("gaze-hint");
   if (!s.running) return;
+  const tag = s.onnx ? "onnx" : "iris";
   hint.textContent = s.calibrated
-    ? `${s.status} ${Math.round(s.trust * 100)}%`
-    : "calibrar";
+    ? `${tag} ${Math.round(s.trust * 100)}%`
+    : `calibrar (${tag})`;
   hint.classList.toggle("ok", s.calibrated && s.trust > 0.35);
   hint.classList.toggle("bad", s.status.startsWith("cam") || s.status === "no-face");
 };

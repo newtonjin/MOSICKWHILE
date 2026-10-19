@@ -17,12 +17,12 @@
 ## Conforto (o que importa)
 
 - **FOV dinâmica** corta optical flow periférico (principal gatilho de VIMS)
-- **Olhar inteligente** — MediaPipe (íris + pose) + **calibração 9 pontos**
+- **Olhar inteligente** — MediaPipe íris + **ONNX MobileOne** (gaze na face) + calibração 9 pontos
 - **Hold longo** — quanto mais tempo com motion, mais a proteção segura
 - **Multi-monitor** — FOV fixa no **monitor do jogo** em foco
 - Overlay **externo** always-on-top (sem inject)
 
-Na 1ª abertura: permita a webcam e rode **Calibrar 9 pontos**.
+Na 1ª abertura: permita a webcam e rode **Calibrar 9 pontos** (recalibrar após update ONNX).
 
 ## Desenvolvimento
 

@@ -22,7 +22,7 @@ export async function runCalibrationWizard(
   const lead = document.createElement("p");
   lead.className = "calib-lead";
   lead.textContent =
-    "Olhe cada ponto sem mexer a cabeça. Isso ensina o FOV onde você realmente olha.";
+    "Olhe cada ponto sem mexer a cabeça. Treina íris + modelo ONNX para achar o olhar na tela.";
   card.appendChild(lead);
 
   const dot = document.createElement("div");

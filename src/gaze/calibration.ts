@@ -3,26 +3,31 @@
 export type Point = { x: number; y: number };
 
 export type GazeFeatures = {
-  /** Iris gaze proxy −1…1 */
+  /** Fused iris ⊕ ONNX gaze proxy −1…1 */
   gx: number;
   gy: number;
+  /** Head pose from MediaPipe matrix */
   yaw: number;
   pitch: number;
+  /** Appearance gaze from ONNX (radians, mild-normalized) */
+  onnxYaw: number;
+  onnxPitch: number;
 };
 
 export type CalibSample = GazeFeatures & Point;
 
 export type GazeMap = {
-  /** sx = bx · [1,gx,gy,yaw,pitch,gx*gy] */
+  /** sx = bx · feats(f) */
   bx: number[];
   by: number[];
   driftX: number;
   driftY: number;
   updatedAt: number;
+  version: 2;
 };
 
-const STORAGE_KEY = "mosickwhile.gazeCalib.v1";
-const FEAT_N = 6;
+const STORAGE_KEY = "mosickwhile.gazeCalib.v2";
+const FEAT_N = 8;
 
 export const CALIB_TARGETS: Point[] = [
   { x: 0.5, y: 0.5 },
@@ -37,11 +42,20 @@ export const CALIB_TARGETS: Point[] = [
 ];
 
 function feats(f: GazeFeatures): number[] {
-  return [1, f.gx, f.gy, f.yaw, f.pitch, f.gx * f.gy];
+  return [
+    1,
+    f.gx,
+    f.gy,
+    f.yaw,
+    f.pitch,
+    f.onnxYaw,
+    f.onnxPitch,
+    f.gx * f.onnxYaw,
+  ];
 }
 
 /** Solve (XᵀX + λI) β = Xᵀy with tiny ridge. */
-function ridge(samples: CalibSample[], axis: "x" | "y", lambda = 0.08): number[] {
+function ridge(samples: CalibSample[], axis: "x" | "y", lambda = 0.1): number[] {
   const xtx = Array.from({ length: FEAT_N }, () => new Array<number>(FEAT_N).fill(0));
   const xty = new Array<number>(FEAT_N).fill(0);
 
@@ -96,15 +110,18 @@ export function fitMap(samples: CalibSample[]): GazeMap | null {
     driftX: 0,
     driftY: 0,
     updatedAt: Date.now(),
+    version: 2,
   };
 }
 
+/** Uncalibrated: blend iris socket + ONNX angles → rough screen point. */
 export function mapGaze(map: GazeMap | null, f: GazeFeatures): Point {
-  if (!map) {
-    // Uncalibrated fallback — iris proxy stretched toward screen.
+  if (!map || map.bx.length !== FEAT_N) {
+    const ox = Math.sin(f.onnxYaw) * Math.cos(f.onnxPitch);
+    const oy = Math.sin(f.onnxPitch);
     return {
-      x: clamp01(0.5 + f.gx * 0.42 - f.yaw * 0.12),
-      y: clamp01(0.5 + f.gy * 0.40 + f.pitch * 0.10),
+      x: clamp01(0.5 + f.gx * 0.28 + ox * 0.38 - f.yaw * 0.1),
+      y: clamp01(0.5 + f.gy * 0.26 + oy * 0.36 + f.pitch * 0.08),
     };
   }
   return {
@@ -118,7 +135,7 @@ export function loadMap(): GazeMap | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const m = JSON.parse(raw) as GazeMap;
-    if (!m?.bx?.length || !m?.by?.length) return null;
+    if (!m?.bx?.length || m.bx.length !== FEAT_N || m.version !== 2) return null;
     return m;
   } catch {
     return null;

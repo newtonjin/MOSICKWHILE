@@ -7,6 +7,9 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig(() => ({
   clearScreen: false,
+  optimizeDeps: {
+    exclude: ["onnxruntime-web"],
+  },
   build: {
     rollupOptions: {
       input: {
