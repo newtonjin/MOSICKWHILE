@@ -1,9 +1,23 @@
+import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
+import {
+  currentMonitor,
+  getCurrentWindow,
+  primaryMonitor,
+} from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { CALIB_TARGETS, type CalibSample } from "./calibration";
 import { gazeTracker } from "./tracker";
 
+/**
+ * Run 13-point calibration on the FULL monitor (not the tiny panel).
+ * Expands the main window to cover the active display, then restores it.
+ */
 export async function runCalibrationWizard(
   root: HTMLElement,
 ): Promise<boolean> {
+  const win = getCurrentWindow();
+  const restore = await captureWindowState(win);
+
   root.hidden = false;
   root.innerHTML = "";
   root.className = "calib-overlay";
@@ -13,13 +27,13 @@ export async function runCalibrationWizard(
   root.appendChild(card);
 
   const title = document.createElement("h2");
-  title.textContent = "Calibrar olhar (13 pontos)";
+  title.textContent = "Calibrar olhar — tela cheia";
   card.appendChild(title);
 
   const lead = document.createElement("p");
   lead.className = "calib-lead";
   lead.textContent =
-    "Com óculos: luz frontal suave, sem reflexo forte. Olhe cada ponto sem mexer a cabeça — pupila + ONNX.";
+    "Os pontos cobrem o MONITOR inteiro. Olhe cada um sem mexer a cabeça. Óculos: luz frontal, sem reflexo.";
   card.appendChild(lead);
 
   const dot = document.createElement("div");
@@ -37,12 +51,21 @@ export async function runCalibrationWizard(
   const samples: CalibSample[] = [];
 
   try {
+    status.textContent = "Expandindo para o monitor…";
+    // Hide FOV overlay so dots aren't under the vignette.
+    try {
+      await invoke("stop_overlay");
+    } catch {
+      /* ignore */
+    }
+    await expandToMonitor(win);
+    await sleep(200);
+
     if (!gazeTracker.getStatus().running) {
       status.textContent = "Abrindo câmera…";
       await gazeTracker.start();
     }
 
-    // Warm-up so ONNX + pupil settle.
     status.textContent = "Preparando sensores…";
     await sleep(700);
 
@@ -72,7 +95,6 @@ export async function runCalibrationWizard(
         await sleep(700);
         continue;
       }
-      // Retry edge points once if pupilQ collapses.
       if ((t.x > 0.85 || t.x < 0.15) && feat.pupilQ < 0.2 && !feat.onnxYaw) {
         status.textContent = "Reforçando borda…";
         const again = await gazeTracker.sampleFor(1200);
@@ -88,7 +110,6 @@ export async function runCalibrationWizard(
       return false;
     }
 
-    // Validate center + right + left.
     status.textContent = "Validando… olhe o centro";
     dot.style.left = "50%";
     dot.style.top = "50%";
@@ -119,6 +140,79 @@ export async function runCalibrationWizard(
   } finally {
     root.hidden = true;
     root.innerHTML = "";
+    await restoreWindowState(win, restore);
+  }
+}
+
+type WinState = {
+  fullscreen: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+async function captureWindowState(
+  win: ReturnType<typeof getCurrentWindow>,
+): Promise<WinState> {
+  const pos = await win.outerPosition();
+  const size = await win.outerSize();
+  const fullscreen = await win.isFullscreen().catch(() => false);
+  // Convert physical → logical for restore on DPI-aware Windows.
+  const scale = await win.scaleFactor();
+  return {
+    fullscreen,
+    x: pos.x / scale,
+    y: pos.y / scale,
+    w: size.width / scale,
+    h: size.height / scale,
+  };
+}
+
+async function expandToMonitor(
+  win: ReturnType<typeof getCurrentWindow>,
+): Promise<void> {
+  const mon = (await currentMonitor()) ?? (await primaryMonitor());
+  if (!mon) {
+    await win.setFullscreen(true);
+    return;
+  }
+  await win.setFullscreen(false);
+  await win.setDecorations(false);
+  const scale = mon.scaleFactor;
+  // Monitor position/size are physical pixels in Tauri 2.
+  const x = mon.position.x / scale;
+  const y = mon.position.y / scale;
+  const w = mon.size.width / scale;
+  const h = mon.size.height / scale;
+  await win.setPosition(new LogicalPosition(x, y));
+  await win.setSize(new LogicalSize(w, h));
+  await win.setAlwaysOnTop(true);
+  await win.setFocus();
+}
+
+async function restoreWindowState(
+  win: ReturnType<typeof getCurrentWindow>,
+  s: WinState,
+): Promise<void> {
+  try {
+    await win.setAlwaysOnTop(false);
+    await win.setFullscreen(false);
+    await win.setDecorations(true);
+    await win.setPosition(new LogicalPosition(s.x, s.y));
+    await win.setSize(new LogicalSize(s.w, s.h));
+    if (s.fullscreen) {
+      await win.setFullscreen(true);
+    }
+  } catch (e) {
+    console.warn("restore window failed", e);
+    try {
+      await win.setFullscreen(false);
+      await win.setDecorations(true);
+      await win.setSize(new LogicalSize(372, 640));
+    } catch {
+      /* ignore */
+    }
   }
 }
 
