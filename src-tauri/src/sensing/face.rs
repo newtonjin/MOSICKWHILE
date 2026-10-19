@@ -360,9 +360,17 @@ impl AdaptiveMapper {
             let down = (fey_down * pw + fy_down * hw * 0.55 + nlean.max(0.0) * 0.12).min(1.15);
             let up = (fey_up.abs() * pw + fy_up.abs() * hw * 0.5).min(1.1);
 
+            // Extra tip gain at extreme pupil angles so split-pane / corner UI
+            // is reachable without needing the mouse to drag the clear zone.
+            let tip_x = fex.abs().powf(1.55);
+            let tip_y = (fey_down.max(fey_up.abs())).powf(1.45);
             let sx = 0.5
-                + (fex * pw * 0.48 + fx * hw * 0.22) * aspect_x * size_boost;
-            let sy = 0.5 + (-up * 0.46 * aspect_y) + (down * 0.48 * aspect_y);
+                + (fex * pw * (0.52 + tip_x * 0.14) + fx * hw * 0.22)
+                    * aspect_x
+                    * size_boost;
+            let sy = 0.5
+                + (-up * (0.48 + tip_y * 0.10) * aspect_y)
+                + (down * (0.50 + tip_y * 0.10) * aspect_y);
             let yaw = (nex * pw + nx * hw * 0.6).clamp(-1.0, 1.0);
             let pitch =
                 (ney * pw + ny * hw * 0.55 + nlean.max(0.0) * 0.15).clamp(-1.0, 1.0);
@@ -379,8 +387,8 @@ impl AdaptiveMapper {
         };
 
         (
-            sx.clamp(0.04, 0.96),
-            sy.clamp(0.04, 0.96),
+            sx.clamp(0.02, 0.98),
+            sy.clamp(0.02, 0.98),
             yaw,
             pitch,
             hy.max(0.0) + ey.max(0.0) * 0.55,

@@ -303,9 +303,9 @@ impl MitigationEngine {
             self.side_mask *= 0.92;
         }
 
-        // Allow true corners (chat bottom-right, etc.).
-        target_cx = target_cx.clamp(0.04, 0.96);
-        target_cy = target_cy.clamp(0.04, 0.96);
+        // Allow true corners (chat, Cursor split panes, etc.).
+        target_cx = target_cx.clamp(0.02, 0.98);
+        target_cy = target_cy.clamp(0.02, 0.98);
 
         let bias_alpha = 1.0 - (-dt / 0.22).exp();
         let target_bx = (target_cx - 0.5) * 2.0;
@@ -334,12 +334,19 @@ impl MitigationEngine {
 
         // Anti-jitter: deadzone + video hold before One Euro.
         // Watching video → high peripheral flow but gaze barely moves; hold FOV.
+        // Exception: glances toward screen edges/corners (split UI, chat) must
+        // still reach — a fat deadzone left dark crescents until the mouse moved.
         if self.clear_inited {
             let dx = target_cx - self.clear_x;
             let dy = target_cy - self.clear_y;
             let dist = (dx * dx + dy * dy).sqrt();
-            // Wider deadzone as the session grows — less FOV "breathing".
-            let dead = 0.016 + fatigue * 0.012 + if gaming_on { 0.006 } else { 0.0 };
+            let edge_intent = ((target_cx - 0.5).abs() * 2.0)
+                .max((target_cy - 0.5).abs() * 2.0)
+                .clamp(0.0, 1.0);
+            // Wider deadzone as the session grows — but shrink it near edges
+            // so static corner looking (no mouse) still opens the clear zone.
+            let dead_base = 0.016 + fatigue * 0.012 + if gaming_on { 0.006 } else { 0.0 };
+            let dead = dead_base * (1.0 - edge_intent * 0.7).max(0.28);
             if dist < dead {
                 target_cx = self.clear_x;
                 target_cy = self.clear_y;
@@ -352,13 +359,18 @@ impl MitigationEngine {
 
             let peri = reading.flow.peripheral_flow;
             let gaze_step = dist;
-            if peri > 0.22 && gaze_step < 0.045 {
+            // Don't freeze mid-screen when gaze is already asking for a corner panel.
+            if peri > 0.22 && gaze_step < 0.045 && edge_intent < 0.55 {
                 // Content motion ≠ eye motion: freeze clear zone hard.
                 let hold = 0.88;
                 target_cx = self.clear_x * hold + target_cx * (1.0 - hold);
                 target_cy = self.clear_y * hold + target_cy * (1.0 - hold);
-            } else if face.pupils_ok && face.pupil_jitter < 0.012 && gaze_step < 0.03 {
-                // High-quality still gaze: extra sticky.
+            } else if face.pupils_ok
+                && face.pupil_jitter < 0.012
+                && gaze_step < 0.03
+                && edge_intent < 0.6
+            {
+                // High-quality still gaze: extra sticky (center/mid only).
                 let hold = 0.72;
                 target_cx = self.clear_x * hold + target_cx * (1.0 - hold);
                 target_cy = self.clear_y * hold + target_cy * (1.0 - hold);
@@ -373,8 +385,8 @@ impl MitigationEngine {
             self.clear_y = target_cy;
             self.clear_inited = true;
         } else {
-            self.clear_x = self.clear_fx.filter(target_cx, dt).clamp(0.04, 0.96);
-            self.clear_y = self.clear_fy.filter(target_cy, dt).clamp(0.04, 0.96);
+            self.clear_x = self.clear_fx.filter(target_cx, dt).clamp(0.02, 0.98);
+            self.clear_y = self.clear_fy.filter(target_cy, dt).clamp(0.02, 0.98);
         }
 
         let drive = (self.smoothed_motion * intensity).clamp(0.0, 1.0);
@@ -507,16 +519,25 @@ impl MitigationEngine {
             horizon_roll,
             clear_x: self.clear_x,
             clear_y: self.clear_y,
-            // Slightly smaller clear window near screen edges so corners feel “reached”.
+            // Near edges/corners: GROW the clear aperture so the looked-at
+            // panel isn't buried under a dark crescent (old shrink looked "flat").
             clear_radius: {
-                let edge = (self.clear_x - 0.5)
-                    .abs()
-                    .max((self.clear_y - 0.5).abs())
-                    .clamp(0.0, 0.5);
-                let shrink = edge * 0.22;
-                // Gaming: tighter clear zone → stronger peripheral FOV cut.
-                let gaming_tight = if metrics.gaming_active { -0.06 } else { 0.0 };
-                (cfg.foveated_clear_radius - shrink + gaming_tight).clamp(0.16, 0.58)
+                let edge_x = ((self.clear_x - 0.5).abs() * 2.0).clamp(0.0, 1.0);
+                let edge_y = ((self.clear_y - 0.5).abs() * 2.0).clamp(0.0, 1.0);
+                let edge = edge_x.max(edge_y);
+                let corner = (edge_x * edge_y).sqrt();
+                let grow = edge * 0.16 + corner * 0.20;
+                // Static look (no mouse / low motion): open further at edges.
+                let static_boost =
+                    (1.0 - self.smoothed_motion).clamp(0.0, 1.0) * edge * 0.12;
+                // Gaming: slightly tighter in the center only — never at corners.
+                let gaming_tight = if metrics.gaming_active {
+                    -0.05 * (1.0 - edge)
+                } else {
+                    0.0
+                };
+                (cfg.foveated_clear_radius + grow + static_boost + gaming_tight)
+                    .clamp(0.18, 0.72)
             },
             foveated_clear: cfg.foveated_clear_enabled,
             virtual_nose: matches!(rest_style, RestFrameStyle::VirtualNose),

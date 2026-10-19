@@ -104,11 +104,29 @@ function drawVignette(
   const cx = w * clearX;
   const cy = h * clearY;
   const minDim = Math.min(w, h);
-  const inner = foveated
+  const edgeProx = Math.max(
+    Math.abs(clearX - 0.5) * 2,
+    Math.abs(clearY - 0.5) * 2,
+  );
+  let inner = foveated
     ? minDim * clearRadius
     : minDim * (0.58 - amount * 0.38);
+
+  // When gaze is near a corner/edge, force the clear hole past the looked-at
+  // screen corner — kills the dark crescent that stuck until the mouse moved.
+  if (foveated && edgeProx > 0.35) {
+    const toEdgeX = clearX < 0.5 ? cx : w - cx;
+    const toEdgeY = clearY < 0.5 ? cy : h - cy;
+    const toLookedCorner = Math.hypot(toEdgeX, toEdgeY);
+    const cover =
+      toLookedCorner + minDim * (0.05 + edgeProx * 0.08);
+    const t = ((edgeProx - 0.35) / 0.65) ** 0.85;
+    inner = Math.max(inner, cover * t);
+    inner = Math.min(inner, minDim * 0.92);
+  }
+
   // Softer falloff — less hard tunnel edge, better “attached” feel on gaze.
-  const outer = minDim * (0.88 + softness * 0.55);
+  const outer = Math.max(inner * 1.35, minDim * (0.88 + softness * 0.55));
 
   const gradient = ctx.createRadialGradient(
     cx,
@@ -126,6 +144,39 @@ function drawVignette(
 
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, w, h);
+
+  // Extra lift on the looked-at edge(s) so split panes stay readable.
+  if (edgeProx > 0.4) {
+    const liftA = Math.min(0.95, (edgeProx - 0.4) * 1.4);
+    ctx.globalCompositeOperation = "destination-out";
+    if (clearX < 0.35) {
+      const g = ctx.createLinearGradient(0, 0, w * 0.28, 0);
+      g.addColorStop(0, `rgba(0,0,0,${liftA})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w * 0.28, h);
+    } else if (clearX > 0.65) {
+      const g = ctx.createLinearGradient(w, 0, w * 0.72, 0);
+      g.addColorStop(0, `rgba(0,0,0,${liftA})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(w * 0.72, 0, w * 0.28, h);
+    }
+    if (clearY < 0.35) {
+      const g = ctx.createLinearGradient(0, 0, 0, h * 0.28);
+      g.addColorStop(0, `rgba(0,0,0,${liftA * 0.9})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h * 0.28);
+    } else if (clearY > 0.65) {
+      const g = ctx.createLinearGradient(0, h, 0, h * 0.72);
+      g.addColorStop(0, `rgba(0,0,0,${liftA * 0.9})`);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, h * 0.72, w, h * 0.28);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
 
   if (groundClear > 0.01) {
     const lift = ctx.createLinearGradient(0, h * 0.62, 0, h);
