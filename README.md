@@ -17,10 +17,12 @@
 ## Conforto (o que importa)
 
 - **FOV dinâmica** corta optical flow periférico (principal gatilho de VIMS)
-- **Pupilas** guiam a zona clara; no Gaming ela fica no centro em viradas
-- **Hold longo** — quanto mais tempo com motion, mais a proteção segura (menos “respiração” do vignette)
-- **Multi-monitor** — FOV fixa no **monitor do jogo** em foco (não some pro segundo monitor)
-- Overlay **externo** always-on-top (sem inject — evita crash)
+- **Olhar inteligente** — MediaPipe (íris + pose) + **calibração 9 pontos**
+- **Hold longo** — quanto mais tempo com motion, mais a proteção segura
+- **Multi-monitor** — FOV fixa no **monitor do jogo** em foco
+- Overlay **externo** always-on-top (sem inject)
+
+Na 1ª abertura: permita a webcam e rode **Calibrar 9 pontos**.
 
 ## Desenvolvimento
 

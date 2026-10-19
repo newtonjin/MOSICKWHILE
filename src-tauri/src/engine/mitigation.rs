@@ -210,13 +210,17 @@ impl MitigationEngine {
         let mut face_cy = 0.5;
         let mut face_w = 0.0;
         if cfg.face_sensing_enabled && face.ok && (face.present || face.confidence > 0.1) {
-            // Pupils locked → high weight; face-only → medium.
-            let base = if face.pupils_ok {
-                0.78 + face.pupil_confidence * 0.18
+            // Calibrated iris lock → near-full weight; uncalibrated weaker.
+            let base = if face.pupils_ok && face.calibrated {
+                0.88 + face.pupil_confidence * 0.12
+            } else if face.pupils_ok {
+                0.72 + face.pupil_confidence * 0.18
             } else {
                 face.confidence * 0.55
             };
-            face_w = (base * if face.present { 1.0 } else { 0.55 }).clamp(0.0, 1.0);
+            // Trust gate: low quality → don't yank FOV with noisy gaze.
+            let trust = face.pupil_quality.max(face.confidence).clamp(0.0, 1.0);
+            face_w = (base * trust * if face.present { 1.0 } else { 0.55 }).clamp(0.0, 1.0);
             face_cx = face.face_x;
             face_cy = face.face_y;
         }

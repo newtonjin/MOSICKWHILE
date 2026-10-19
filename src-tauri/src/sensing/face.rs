@@ -11,12 +11,12 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::one_euro::OneEuro;
 use super::pupils::{detect_pupil_gaze, PupilGaze};
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct FaceSample {
     pub ok: bool,
@@ -48,6 +48,9 @@ pub struct FaceSensor {
     latest: Mutex<FaceSample>,
     running: AtomicBool,
     enabled: AtomicBool,
+    /// MediaPipe (frontend) owns the webcam — skip Seeta/nokhwa loop.
+    external: AtomicBool,
+    last_external: Mutex<Instant>,
     /// Physical display size (pixels) for aspect-aware gains.
     display_w: AtomicU32,
     display_h: AtomicU32,
@@ -65,6 +68,8 @@ impl FaceSensor {
             }),
             running: AtomicBool::new(false),
             enabled: AtomicBool::new(false),
+            external: AtomicBool::new(false),
+            last_external: Mutex::new(Instant::now() - Duration::from_secs(30)),
             display_w: AtomicU32::new(w),
             display_h: AtomicU32::new(h),
         })
@@ -82,9 +87,39 @@ impl FaceSensor {
         }
     }
 
+    /// Frontend MediaPipe driver: ingest gaze samples and keep Seeta camera off.
+    pub fn set_external(&self, on: bool) {
+        self.external.store(on, Ordering::SeqCst);
+        if on {
+            // Stop legacy webcam loop so only one consumer holds the camera.
+            self.running.store(false, Ordering::SeqCst);
+        }
+    }
+
+    pub fn ingest(&self, sample: FaceSample) {
+        self.external.store(true, Ordering::SeqCst);
+        self.running.store(false, Ordering::SeqCst);
+        *self.last_external.lock() = Instant::now();
+        *self.latest.lock() = sample;
+    }
+
     pub fn set_enabled(self: &Arc<Self>, on: bool) {
         self.enabled.store(on, Ordering::SeqCst);
-        if on && !self.running.load(Ordering::SeqCst) {
+        if !on {
+            self.running.store(false, Ordering::SeqCst);
+            return;
+        }
+        // Prefer MediaPipe external path; only fall back to Seeta if no
+        // external samples arrived recently.
+        if self.external.load(Ordering::SeqCst) {
+            return;
+        }
+        let stale = self
+            .last_external
+            .lock()
+            .elapsed()
+            > Duration::from_secs(4);
+        if stale && !self.running.load(Ordering::SeqCst) {
             self.start();
         }
     }
@@ -92,6 +127,7 @@ impl FaceSensor {
     pub fn stop(&self) {
         self.enabled.store(false, Ordering::SeqCst);
         self.running.store(false, Ordering::SeqCst);
+        self.external.store(false, Ordering::SeqCst);
     }
 
     fn start(self: &Arc<Self>) {

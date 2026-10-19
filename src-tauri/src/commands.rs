@@ -5,6 +5,7 @@ use crate::engine::{AppConfig, Preset};
 use crate::inject::{foreground_pid, inject_pid};
 use crate::ipc::BridgeState;
 use crate::overlay::{hide_overlay, show_overlay};
+use crate::sensing::FaceSample;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -153,4 +154,23 @@ pub fn attach_game_pid(
     }
     let _ = app.emit("bridge-attached", pid);
     Ok(get_bridge_status(bridge))
+}
+
+/// MediaPipe gaze driver (frontend) pushes iris/pose samples here.
+#[tauri::command]
+pub fn push_gaze_sample(
+    state: State<'_, std::sync::Arc<AppState>>,
+    sample: FaceSample,
+) -> Result<(), String> {
+    state.face.ingest(sample);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_gaze_external(
+    state: State<'_, std::sync::Arc<AppState>>,
+    external: bool,
+) -> Result<(), String> {
+    state.face.set_external(external);
+    Ok(())
 }

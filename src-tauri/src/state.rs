@@ -27,9 +27,8 @@ impl AppState {
         let cfg = AppConfig::default();
         let display = Arc::new(SharedDisplay::new());
         let face = FaceSensor::new();
-        if cfg.face_sensing_enabled {
-            face.set_enabled(true);
-        }
+        // Face sensing starts from the MediaPipe frontend driver; Seeta is
+        // only a fallback if no external samples arrive.
         Arc::new(Self {
             config: Mutex::new(cfg),
             engine: Mutex::new(MitigationEngine::default()),

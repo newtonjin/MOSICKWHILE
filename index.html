@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
+    <div id="calib-root" class="calib-overlay" hidden></div>
+
     <div id="comfort-gate" class="gate" hidden>
       <div class="gate-card">
         <p class="gate-kicker">Propósito</p>
@@ -125,10 +127,34 @@
           </div>
         </details>
 
+        <section class="block tip">
+          <div class="row-label">
+            <span>Olhar inteligente</span>
+            <span class="hint" id="gaze-hint">iris…</span>
+          </div>
+          <p class="attach-help">
+            MediaPipe íris + pose · calibração 9 pontos · FOV segue o olhar de
+            verdade (não só o mouse).
+          </p>
+          <div class="gaze-actions">
+            <button id="btn-calib" type="button" class="secondary">
+              Calibrar 9 pontos
+            </button>
+            <button id="btn-recenter" type="button" class="secondary">
+              Recentrar
+            </button>
+          </div>
+          <div class="checks tip-checks">
+            <label
+              ><input id="face-sensing" type="checkbox" checked /> Webcam /
+              íris</label
+            >
+          </div>
+        </section>
+
         <details class="panel" open>
-          <summary>Olhar &amp; rest frame</summary>
+          <summary>Rest frame &amp; motor</summary>
           <div class="checks">
-            <label><input id="face-sensing" type="checkbox" checked /> Webcam / pupilas</label>
             <label><input id="rest-frame" type="checkbox" checked /> Rest frame</label>
             <label><input id="comfort-ramp" type="checkbox" checked /> Comfort ramp</label>
             <label><input id="flow-dampen" type="checkbox" checked /> Flow dampen</label>

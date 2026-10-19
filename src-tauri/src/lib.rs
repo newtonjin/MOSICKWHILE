@@ -15,7 +15,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 use commands::{
     apply_preset, attach_foreground_game, attach_game_pid, get_bridge_status, get_config,
-    get_overlay_frame, is_overlay_active, set_config, start_overlay, stop_overlay, toggle_enabled,
+    get_overlay_frame, is_overlay_active, push_gaze_sample, set_config, set_gaze_external,
+    start_overlay, stop_overlay, toggle_enabled,
 };
 use ipc::BridgeState;
 use overlay::{
@@ -124,6 +125,8 @@ pub fn run() {
             get_bridge_status,
             attach_foreground_game,
             attach_game_pid,
+            push_gaze_sample,
+            set_gaze_external,
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {

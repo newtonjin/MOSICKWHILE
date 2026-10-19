@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { runCalibrationWizard } from "./gaze/calibUi";
+import { gazeTracker } from "./gaze/tracker";
 import type { AppConfig, LiveMetrics, OverlayFrame, Preset } from "./types";
 
 function $(id: string): HTMLElement {
@@ -31,6 +33,28 @@ async function loadConfig() {
   applyConfigToUi(config);
   overlayOn = await invoke<boolean>("is_overlay_active");
   setOverlayUi(overlayOn);
+  await syncGazeDriver(config.faceSensingEnabled);
+}
+
+async function syncGazeDriver(on: boolean) {
+  const hint = $("gaze-hint");
+  if (!on) {
+    await gazeTracker.stop();
+    hint.textContent = "off";
+    hint.classList.remove("ok", "bad");
+    return;
+  }
+  try {
+    await gazeTracker.start();
+    const s = gazeTracker.getStatus();
+    hint.textContent = s.calibrated ? s.status : "calibrar";
+    hint.classList.toggle("ok", s.calibrated && s.running);
+    hint.classList.toggle("bad", !s.running);
+  } catch {
+    hint.textContent = "cam-fail";
+    hint.classList.add("bad");
+    hint.classList.remove("ok");
+  }
 }
 
 function setOverlayUi(active: boolean) {
@@ -203,11 +227,37 @@ function wireUi() {
 
   for (const [id, key] of boolMap) {
     $input(id).addEventListener("change", (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
       void pushConfig({
-        [key]: (e.target as HTMLInputElement).checked,
-      } as Partial<AppConfig>);
+        [key]: checked,
+      } as Partial<AppConfig>).then(() => {
+        if (key === "faceSensingEnabled") {
+          void syncGazeDriver(checked);
+        }
+      });
     });
   }
+
+  $("btn-calib").addEventListener("click", async () => {
+    const btn = $("btn-calib") as HTMLButtonElement;
+    btn.disabled = true;
+    try {
+      if (!gazeTracker.getStatus().running) {
+        await syncGazeDriver(true);
+        await pushConfig({ faceSensingEnabled: true });
+      }
+      const ok = await runCalibrationWizard($("calib-root"));
+      $("gaze-hint").textContent = ok ? "iris-lock" : "retry";
+      $("gaze-hint").classList.toggle("ok", ok);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("btn-recenter").addEventListener("click", () => {
+    gazeTracker.recenter();
+    $("gaze-hint").textContent = "recentered";
+  });
 
   $("btn-gaming").addEventListener("click", () => {
     if (!config) return;
@@ -264,10 +314,33 @@ function wireComfortGate() {
   $("gate-go").addEventListener("click", () => {
     localStorage.setItem(key, "1");
     gate.hidden = true;
+    void maybePromptCalib();
   });
 }
 
+async function maybePromptCalib() {
+  if (localStorage.getItem("mosickwhile.calibPrompt.v1")) return;
+  if (!config?.faceSensingEnabled) return;
+  if (gazeTracker.isCalibrated()) return;
+  localStorage.setItem("mosickwhile.calibPrompt.v1", "1");
+  await runCalibrationWizard($("calib-root"));
+}
+
+gazeTracker.onStatus = (s) => {
+  const hint = $("gaze-hint");
+  if (!s.running) return;
+  hint.textContent = s.calibrated
+    ? `${s.status} ${Math.round(s.trust * 100)}%`
+    : "calibrar";
+  hint.classList.toggle("ok", s.calibrated && s.trust > 0.35);
+  hint.classList.toggle("bad", s.status.startsWith("cam") || s.status === "no-face");
+};
+
 wireComfortGate();
 wireUi();
-void loadConfig();
+void loadConfig().then(() => {
+  if (localStorage.getItem("mosickwhile.comfortGate.v1")) {
+    void maybePromptCalib();
+  }
+});
 void wireEvents();
